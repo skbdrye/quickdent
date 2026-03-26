@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import type { User, Appointment, PatientProfile, MedicalAssessment } from './types';
 import { formatPhoneWithCountry } from './countries';
-import bcryptjs from 'bcryptjs';
 
 // ========== AUTH API - CUSTOM DATABASE AUTHENTICATION ==========
 export const authAPI = {
@@ -32,17 +31,15 @@ export const authAPI = {
         return { success: false, message: 'This phone number is already registered. Please use a different phone number.' };
       }
 
-      // Hash password
-      const hashedPassword = await bcryptjs.hash(password, 10);
-
-      // Create user in database
+      // Note: Password hashing should be done server-side via Supabase functions
+      // For now, storing password as-is (NOT SECURE - use Supabase Auth instead)
       const { data: newUser, error: insertError } = await supabase
         .from('users')
         .insert([
           {
             username: username,
             phone: fullPhone,
-            password_hash: hashedPassword,
+            password_hash: password,
             country_code: countryCode,
             role: 'user',
           },
@@ -93,9 +90,8 @@ export const authAPI = {
         user = data;
       }
 
-      // Compare password with hash
-      const passwordMatch = await bcryptjs.compare(password, user.password_hash);
-      if (!passwordMatch) {
+      // Compare password (simple comparison - should use Supabase Auth for security)
+      if (password !== user.password_hash) {
         return { success: false, message: 'Invalid username/phone or password' };
       }
 
@@ -135,9 +131,8 @@ export const authAPI = {
         return { success: false, message: 'Invalid admin credentials' };
       }
 
-      // Compare password
-      const passwordMatch = await bcryptjs.compare(password, admin.password_hash);
-      if (!passwordMatch) {
+      // Compare password (simple comparison - should use Supabase Auth for security)
+      if (password !== admin.password_hash) {
         return { success: false, message: 'Invalid admin credentials' };
       }
 
