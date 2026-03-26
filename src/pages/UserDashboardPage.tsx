@@ -1,0 +1,39 @@
+import { useState } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuthStore } from '@/lib/store';
+import { UserSidebar } from '@/components/layout/UserSidebar';
+import { UserDashboard } from '@/components/user/UserDashboard';
+import { AppointmentBooking } from '@/components/user/AppointmentBooking';
+import { GroupBooking } from '@/components/user/GroupBooking';
+import { PatientProfile } from '@/components/user/PatientProfile';
+import { UserSettings } from '@/components/user/UserSettings';
+import type { DashboardPage } from '@/lib/types';
+
+export default function UserDashboardPage() {
+  const { user, isAuthenticated } = useAuthStore();
+  const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
+
+  if (!isAuthenticated || !user || user.role !== 'user') {
+    return <Navigate to="/" replace />;
+  }
+
+  const renderPage = () => {
+    switch (activePage) {
+      case 'dashboard': return <UserDashboard />;
+      case 'appointments': return <AppointmentBooking />;
+      case 'group-booking': return <GroupBooking />;
+      case 'profile': return <PatientProfile />;
+      case 'settings': return <UserSettings />;
+      default: return <UserDashboard />;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-background">
+      <UserSidebar activePage={activePage} onNavigate={setActivePage} />
+      <main className="flex-1 overflow-y-auto">
+        {renderPage()}
+      </main>
+    </div>
+  );
+}

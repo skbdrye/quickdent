@@ -1,0 +1,278 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 160 20% 98%;
+    --foreground: 186 60% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 186 60% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 186 60% 8%;
+
+    --primary: 186 100% 13%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 187 69% 24%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 164 30% 94%;
+    --muted-foreground: 186 20% 40%;
+
+    --accent: 174 27% 58%;
+    --accent-foreground: 186 100% 8%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 200 80% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --mint: 164 93% 94%;
+    --mint-foreground: 186 100% 13%;
+
+    --border: 174 20% 88%;
+    --input: 174 20% 86%;
+    --ring: 187 69% 24%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 186 100% 13%;
+    --sidebar-foreground: 164 40% 92%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 186 100% 13%;
+    --sidebar-accent: 187 69% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 187 50% 20%;
+    --sidebar-ring: 174 27% 58%;
+
+    /* Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(186 100% 13%) 0%, hsl(187 69% 24%) 50%, hsl(174 27% 42%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(186 100% 13%), hsl(187 69% 24%));
+    --gradient-accent: linear-gradient(135deg, hsl(187 69% 24%), hsl(174 27% 58%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(164 93% 97%) 100%);
+    --gradient-mint: linear-gradient(135deg, hsl(164 93% 94%), hsl(164 60% 90%));
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px hsl(186 100% 13% / 0.06);
+    --shadow-md: 0 4px 16px hsl(186 100% 13% / 0.08);
+    --shadow-lg: 0 8px 30px hsl(186 100% 13% / 0.12);
+    --shadow-primary: 0 4px 20px hsl(186 100% 13% / 0.25);
+    --shadow-glow: 0 0 40px hsl(174 27% 58% / 0.3);
+
+    /* Transitions */
+    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 186 40% 6%;
+    --foreground: 164 30% 95%;
+
+    --card: 186 35% 10%;
+    --card-foreground: 164 30% 95%;
+
+    --popover: 186 35% 10%;
+    --popover-foreground: 164 30% 95%;
+
+    --primary: 174 27% 58%;
+    --primary-foreground: 186 100% 8%;
+
+    --secondary: 187 40% 18%;
+    --secondary-foreground: 164 30% 92%;
+
+    --muted: 186 25% 14%;
+    --muted-foreground: 174 15% 55%;
+
+    --accent: 187 69% 24%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 200 80% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --mint: 164 40% 14%;
+    --mint-foreground: 164 93% 94%;
+
+    --border: 186 25% 18%;
+    --input: 186 25% 18%;
+    --ring: 174 27% 58%;
+
+    --sidebar-background: 186 50% 5%;
+    --sidebar-foreground: 164 30% 85%;
+    --sidebar-primary: 174 27% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 186 35% 12%;
+    --sidebar-accent-foreground: 164 30% 90%;
+    --sidebar-border: 186 25% 15%;
+    --sidebar-ring: 174 27% 58%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(186 40% 5%) 0%, hsl(187 40% 12%) 50%, hsl(174 30% 18%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(186 35% 10%) 0%, hsl(186 35% 8%) 100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Animation keyframes */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+.animate-fade-in-down {
+  animation: fade-in-down 0.6s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s ease-out forwards;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-delay-1 {
+  animation-delay: 0.1s;
+  opacity: 0;
+}
+
+.animate-delay-2 {
+  animation-delay: 0.2s;
+  opacity: 0;
+}
+
+.animate-delay-3 {
+  animation-delay: 0.3s;
+  opacity: 0;
+}
+
+.animate-delay-4 {
+  animation-delay: 0.4s;
+  opacity: 0;
+}
+
+.animate-delay-5 {
+  animation-delay: 0.5s;
+  opacity: 0;
+}
+
+/* Glass morphism utility */
+.glass {
+  background: hsl(var(--background) / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Section scroll padding */
+section[id] {
+  scroll-margin-top: 80px;
+}
