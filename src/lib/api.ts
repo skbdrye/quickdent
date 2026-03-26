@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { User, Appointment, PatientProfile, MedicalAssessment } from './types';
 import { formatPhoneWithCountry } from './countries';
+import bcryptjs from 'bcryptjs';
 
 // ========== AUTH API - CUSTOM DATABASE AUTHENTICATION ==========
 export const authAPI = {
@@ -31,15 +32,17 @@ export const authAPI = {
         return { success: false, message: 'This phone number is already registered. Please use a different phone number.' };
       }
 
-      // Note: Password hashing should be done server-side via Supabase functions
-      // For now, storing password as-is (NOT SECURE - use Supabase Auth instead)
+      // Hash password
+      const hashedPassword = await bcryptjs.hash(password, 10);
+
+      // Create user in database
       const { data: newUser, error: insertError } = await supabase
         .from('users')
         .insert([
           {
             username: username,
             phone: fullPhone,
-            password_hash: password,
+            password_hash: hashedPassword,
             country_code: countryCode,
             role: 'user',
           },
@@ -88,8 +91,9 @@ export const authAPI = {
           return { success: false, message: 'Invalid username or password' };
         }
         user = data;
-      }
-
+      }with hash
+      const passwordMatch = await bcryptjs.compare(password, user.password_hash);
+      if (!passwordMatc
       // Compare password (simple comparison - should use Supabase Auth for security)
       if (password !== user.password_hash) {
         return { success: false, message: 'Invalid username/phone or password' };
@@ -131,7 +135,8 @@ export const authAPI = {
         return { success: false, message: 'Invalid admin credentials' };
       }
 
-      // Compare password (simple comparison - should use Supabase Auth for security)
+      const passwordMatch = await bcryptjs.compare(password, admin.password_hash);
+      if (!passwordMatcson - should use Supabase Auth for security)
       if (password !== admin.password_hash) {
         return { success: false, message: 'Invalid admin credentials' };
       }
