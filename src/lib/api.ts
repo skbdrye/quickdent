@@ -91,11 +91,11 @@ export const authAPI = {
           return { success: false, message: 'Invalid username or password' };
         }
         user = data;
-      }with hash
+      }
+
+      // Compare password with hash
       const passwordMatch = await bcryptjs.compare(password, user.password_hash);
-      if (!passwordMatc
-      // Compare password (simple comparison - should use Supabase Auth for security)
-      if (password !== user.password_hash) {
+      if (!passwordMatch) {
         return { success: false, message: 'Invalid username/phone or password' };
       }
 
@@ -135,9 +135,9 @@ export const authAPI = {
         return { success: false, message: 'Invalid admin credentials' };
       }
 
+      // Compare password
       const passwordMatch = await bcryptjs.compare(password, admin.password_hash);
-      if (!passwordMatcson - should use Supabase Auth for security)
-      if (password !== admin.password_hash) {
+      if (!passwordMatch) {
         return { success: false, message: 'Invalid admin credentials' };
       }
 
