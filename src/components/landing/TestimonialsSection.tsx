@@ -26,35 +26,26 @@ export function TestimonialsSection() {
   return (
     <section className="py-20 bg-background">
       <div className="container mx-auto px-4">
-        <div className="text-center max-w-2xl mx-auto mb-14">
-          <span className="text-sm font-semibold text-secondary uppercase tracking-wider">
-            Testimonials
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mt-2">
-            What our patients say
-          </h2>
-          <p className="text-muted-foreground mt-4">
+        <div className="text-center mb-12 animate-fade-in-up">
+          <span className="text-sm font-semibold text-secondary uppercase tracking-wider">Testimonials</span>
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mt-2">What our patients say</h2>
+          <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
             Hear from real patients who have experienced the QuickDent difference.
           </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {testimonials.map((t, i) => (
-            <Card
-              key={i}
-              className="border-border/50 hover:border-secondary/30 hover:shadow-lg transition-all duration-300 bg-card"
-            >
-              <CardContent className="p-7 space-y-4">
-                <Quote className="h-8 w-8 text-accent/40" />
-                <p className="text-sm text-muted-foreground leading-relaxed italic">
-                  &ldquo;{t.text}&rdquo;
-                </p>
-                <div className="flex gap-0.5">
+            <Card key={i} className="hover:shadow-lg transition-shadow border-border/50">
+              <CardContent className="p-6">
+                <Quote className="w-8 h-8 text-secondary/30 mb-3" />
+                <p className="text-foreground text-sm mb-4 leading-relaxed">"{t.text}"</p>
+                <div className="flex gap-0.5 mb-3">
                   {Array.from({ length: t.rating }).map((_, j) => (
-                    <Star key={j} className="h-4 w-4 fill-warning text-warning" />
+                    <Star key={j} className="w-4 h-4 fill-warning text-warning" />
                   ))}
                 </div>
-                <div className="pt-2 border-t border-border">
+                <div>
                   <p className="font-semibold text-sm text-foreground">{t.name}</p>
                   <p className="text-xs text-muted-foreground">{t.role}</p>
                 </div>

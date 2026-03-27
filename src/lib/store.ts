@@ -1,21 +1,17 @@
 import { create } from 'zustand';
-import { authAPI } from './api';
-import type { User, Appointment, PatientProfile, MedicalAssessment } from './types';
+import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI } from './api';
+import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription } from './types';
 
 // ========== HELPER FUNCTIONS FOR LOCALSTORAGE ==========
 function loadJSON<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
 
 function saveJSON(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch { /* ignore */ }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
 }
 
 // ========== AUTH STORE ==========
@@ -25,6 +21,7 @@ interface AuthState {
   login: (phone: string, password: string) => Promise<{ success: boolean; message: string }>;
   register: (username: string, phone: string, countryCode: string, password: string) => Promise<{ success: boolean; message: string }>;
   adminLogin: (usernameOrPhone: string, password: string) => Promise<{ success: boolean; message: string }>;
+  setUser: (user: User) => void;
   logout: () => void;
 }
 
@@ -62,95 +59,221 @@ export const useAuthStore = create<AuthState>((set) => ({
     saveJSON('qd_auth', false);
     set({ user: null, isAuthenticated: false });
   },
+
+  setUser: (user: User) => {
+    saveJSON('qd_user', user);
+    set({ user });
+  },
 }));
 
 // ========== APPOINTMENTS STORE ==========
 interface AppointmentsState {
   appointments: Appointment[];
   isLoading: boolean;
-  fetchAppointments: () => void;
-  addAppointment: (apt: Omit<Appointment, 'id' | 'status' | 'createdAt'>) => Appointment;
-  updateStatus: (id: number, status: Appointment['status']) => void;
-  deleteAppointment: (id: number) => void;
+  fetchAppointments: () => Promise<void>;
+  fetchUserAppointments: (userId: string) => Promise<void>;
+  addAppointment: (apt: Omit<Appointment, 'id' | 'created_at' | 'cancelled_at' | 'group_members'>) => Promise<Appointment>;
+  updateStatus: (id: number, status: Appointment['status']) => Promise<void>;
+  deleteAppointment: (id: number) => Promise<void>;
+  fetchBookedSlots: (date: string) => Promise<string[]>;
 }
 
 export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
-  appointments: loadJSON<Appointment[]>('qd_appointments', []),
+  appointments: [],
   isLoading: false,
 
-  fetchAppointments: () => {
-    const appointments = loadJSON<Appointment[]>('qd_appointments', []);
-    set({ appointments });
+  fetchAppointments: async () => {
+    set({ isLoading: true });
+    try {
+      const appointments = await appointmentsAPI.fetchAll();
+      set({ appointments, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
   },
 
-  addAppointment: (data) => {
-    const apt: Appointment = {
-      ...data,
-      id: Date.now(),
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [apt, ...get().appointments];
-    saveJSON('qd_appointments', updated);
-    set({ appointments: updated });
+  fetchUserAppointments: async (userId: string) => {
+    set({ isLoading: true });
+    try {
+      const appointments = await appointmentsAPI.fetchByUser(userId);
+      set({ appointments, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  addAppointment: async (data) => {
+    const apt = await appointmentsAPI.create(data);
+    set({ appointments: [apt, ...get().appointments] });
     return apt;
   },
 
-  updateStatus: (id, status) => {
-    const updated = get().appointments.map(a =>
-      a.id === id ? { ...a, status } : a
-    );
-    saveJSON('qd_appointments', updated);
-    set({ appointments: updated });
+  updateStatus: async (id, status) => {
+    await appointmentsAPI.updateStatus(id, status);
+    set({
+      appointments: get().appointments.map(a =>
+        a.id === id ? { ...a, status, cancelled_at: status === 'Cancelled' ? new Date().toISOString() : a.cancelled_at } : a
+      ),
+    });
   },
 
-  deleteAppointment: (id) => {
-    const updated = get().appointments.filter(a => a.id !== id);
-    saveJSON('qd_appointments', updated);
-    set({ appointments: updated });
+  deleteAppointment: async (id) => {
+    await appointmentsAPI.delete(id);
+    set({ appointments: get().appointments.filter(a => a.id !== id) });
+  },
+
+  fetchBookedSlots: async (date: string) => {
+    return appointmentsAPI.fetchBookedSlots(date);
   },
 }));
 
-// ========== PATIENT PROFILE STORE ==========
+// ========== PROFILE STORE ==========
 interface ProfileState {
-  profile: PatientProfile;
-  assessment: MedicalAssessment;
-  assessmentSubmitted: boolean;
-  updateProfile: (data: Partial<PatientProfile>) => void;
-  updateAssessment: (data: Partial<MedicalAssessment>) => void;
-  submitAssessment: () => void;
+  profile: PatientProfile | null;
+  assessment: MedicalAssessment | null;
+  isLoading: boolean;
+  fetchProfile: (userId: string) => Promise<void>;
+  fetchAssessment: (userId: string) => Promise<void>;
+  updateProfile: (userId: string, data: Partial<PatientProfile>) => Promise<void>;
+  updateAssessment: (userId: string, data: Partial<MedicalAssessment>) => Promise<void>;
+  submitAssessment: (userId: string) => Promise<void>;
+  isProfileComplete: () => boolean;
+  isAssessmentSubmitted: () => boolean;
 }
 
-const emptyProfile: PatientProfile = {
-  firstName: '', lastName: '', middleName: '',
-  age: null, gender: '', address: '', phone: '',
-};
-
-const emptyAssessment: MedicalAssessment = {
-  q1: '', q2: '', q2Details: '', q3: '', q3Details: '',
-  q4: '', q4Details: '', q5: '', q5Details: '', q6: '',
-  lastCheckup: '', otherMedical: '', consent: false,
-};
-
 export const useProfileStore = create<ProfileState>((set, get) => ({
-  profile: loadJSON('qd_profile', emptyProfile),
-  assessment: loadJSON('qd_assessment', emptyAssessment),
-  assessmentSubmitted: loadJSON('qd_assessment_done', false),
+  profile: null,
+  assessment: null,
+  isLoading: false,
 
-  updateProfile: (data) => {
-    const updated = { ...get().profile, ...data };
-    saveJSON('qd_profile', updated);
+  fetchProfile: async (userId) => {
+    set({ isLoading: true });
+    const profile = await profileAPI.fetch(userId);
+    set({ profile, isLoading: false });
+  },
+
+  fetchAssessment: async (userId) => {
+    const assessment = await assessmentAPI.fetch(userId);
+    set({ assessment });
+  },
+
+  updateProfile: async (userId, data) => {
+    const current = get().profile;
+    const updated = { ...current, ...data, user_id: userId } as PatientProfile;
+    // Check completeness
+    const isComplete = !!(updated.first_name && updated.last_name && updated.date_of_birth && updated.gender && updated.phone);
+    updated.is_complete = isComplete;
+    await profileAPI.upsert(updated);
     set({ profile: updated });
   },
 
-  updateAssessment: (data) => {
-    const updated = { ...get().assessment, ...data };
-    saveJSON('qd_assessment', updated);
+  updateAssessment: async (userId, data) => {
+    const current = get().assessment;
+    const updated = { ...current, ...data, user_id: userId } as MedicalAssessment;
+    await assessmentAPI.upsert(updated);
     set({ assessment: updated });
   },
 
-  submitAssessment: () => {
-    saveJSON('qd_assessment_done', true);
-    set({ assessmentSubmitted: true });
+  submitAssessment: async (userId) => {
+    await assessmentAPI.upsert({ user_id: userId, is_submitted: true, consent: true });
+    const current = get().assessment;
+    if (current) {
+      set({ assessment: { ...current, is_submitted: true } });
+    }
+  },
+
+  isProfileComplete: () => {
+    const p = get().profile;
+    return !!(p && p.first_name && p.last_name && p.date_of_birth && p.gender && p.phone);
+  },
+
+  isAssessmentSubmitted: () => {
+    return get().assessment?.is_submitted || false;
+  },
+}));
+
+// ========== CLINIC STORE ==========
+interface ClinicState {
+  services: ClinicService[];
+  schedule: ClinicSchedule | null;
+  isLoading: boolean;
+  fetchServices: () => Promise<void>;
+  fetchSchedule: () => Promise<void>;
+  addService: (name: string) => Promise<void>;
+  updateService: (id: number, updates: Partial<ClinicService>) => Promise<void>;
+  deleteService: (id: number) => Promise<void>;
+  updateSchedule: (schedule: ClinicSchedule) => Promise<void>;
+}
+
+export const useClinicStore = create<ClinicState>((set, get) => ({
+  services: [],
+  schedule: null,
+  isLoading: false,
+
+  fetchServices: async () => {
+    const services = await servicesAPI.fetchAll();
+    set({ services });
+  },
+
+  fetchSchedule: async () => {
+    const schedule = await clinicSettingsAPI.fetchSchedule();
+    set({ schedule });
+  },
+
+  addService: async (name) => {
+    const maxOrder = Math.max(0, ...get().services.map(s => s.sort_order));
+    await servicesAPI.create(name, maxOrder + 1);
+    await get().fetchServices();
+  },
+
+  updateService: async (id, updates) => {
+    await servicesAPI.update(id, updates);
+    set({ services: get().services.map(s => s.id === id ? { ...s, ...updates } : s) });
+  },
+
+  deleteService: async (id) => {
+    await servicesAPI.delete(id);
+    set({ services: get().services.filter(s => s.id !== id) });
+  },
+
+  updateSchedule: async (schedule) => {
+    await clinicSettingsAPI.updateSchedule(schedule);
+    set({ schedule });
+  },
+}));
+
+// ========== PRESCRIPTIONS STORE ==========
+interface PrescriptionsState {
+  prescriptions: Prescription[];
+  isLoading: boolean;
+  fetchByUser: (userId: string) => Promise<void>;
+  fetchByGroupMembers: (memberIds: number[]) => Promise<Prescription[]>;
+  fetchAll: () => Promise<void>;
+  addPrescription: (prescription: Omit<Prescription, 'id' | 'created_at'>) => Promise<void>;
+}
+
+export const usePrescriptionsStore = create<PrescriptionsState>((set, get) => ({
+  prescriptions: [],
+  isLoading: false,
+
+  fetchByUser: async (userId) => {
+    set({ isLoading: true });
+    const prescriptions = await prescriptionsAPI.fetchByUser(userId);
+    set({ prescriptions, isLoading: false });
+  },
+
+  fetchByGroupMembers: async (memberIds) => {
+    return prescriptionsAPI.fetchByGroupMemberIds(memberIds);
+  },
+
+  fetchAll: async () => {
+    set({ isLoading: true });
+    const prescriptions = await prescriptionsAPI.fetchAll();
+    set({ prescriptions, isLoading: false });
+  },
+
+  addPrescription: async (prescription) => {
+    const created = await prescriptionsAPI.create(prescription);
+    set({ prescriptions: [created, ...get().prescriptions] });
   },
 }));

@@ -9,20 +9,26 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground",
+          "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground",
+          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground",
+          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
-        success: "border-success/30 bg-success/15 text-success",
-        warning: "border-warning/30 bg-warning/15 text-warning",
-        info: "border-info/30 bg-info/15 text-info",
-        mint: "border-accent/30 bg-mint text-mint-foreground",
-        pending: "border-warning/30 bg-warning/15 text-warning",
-        approved: "border-success/30 bg-success/15 text-success",
-        declined: "border-destructive/30 bg-destructive/15 text-destructive",
-        completed: "border-primary/30 bg-primary/15 text-primary",
+        approved:
+          "border-transparent bg-success/15 text-success",
+        pending:
+          "border-transparent bg-warning/15 text-warning",
+        declined:
+          "border-transparent bg-destructive/15 text-destructive",
+        completed:
+          "border-transparent bg-primary/15 text-primary",
+        cancelled:
+          "border-transparent bg-destructive/20 text-destructive",
+        confirmed:
+          "border-transparent bg-success/15 text-success",
+        noshow:
+          "border-transparent bg-muted text-muted-foreground",
       },
     },
     defaultVariants: {

@@ -1,9 +1,15 @@
 import { defineConfig, PluginOption } from "vite";
+import { enterDevPlugin, enterProdPlugin } from 'vite-plugin-enter-dev';
 import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const plugins: PluginOption[] = [];
+  const plugins = [
+    ...enterProdPlugin(),
+  ];
+  if (mode === 'development') {
+    plugins.push(...enterDevPlugin());
+  }
   return {
     server: {
       host: "::",

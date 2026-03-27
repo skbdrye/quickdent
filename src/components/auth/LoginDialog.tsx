@@ -83,69 +83,61 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg shadow-sm">
-            Q
-          </div>
-          <DialogTitle className="text-xl">QuickDent</DialogTitle>
+        <DialogHeader className="text-center items-center">
+          <div className="mx-auto w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg mb-2">Q</div>
+          <DialogTitle>QuickDent</DialogTitle>
           <DialogDescription>Sign in or create an account to book appointments.</DialogDescription>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={setTab} className="mt-2">
+        <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login" className="gap-1.5">
-              <LogIn className="h-3.5 w-3.5" /> Login
-            </TabsTrigger>
-            <TabsTrigger value="register" className="gap-1.5">
-              <UserPlus className="h-3.5 w-3.5" /> Register
-            </TabsTrigger>
+            <TabsTrigger value="login"><LogIn className="w-4 h-4 mr-1.5" /> Login</TabsTrigger>
+            <TabsTrigger value="register"><UserPlus className="w-4 h-4 mr-1.5" /> Register</TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
-            <form onSubmit={handleLogin} className="space-y-4 pt-2">
-              <div className="space-y-2">
+            <form onSubmit={handleLogin} className="space-y-4 mt-4">
+              <div>
                 <Label>Username or Mobile Number</Label>
-                <Input value={loginPhone} onChange={e => setLoginPhone(e.target.value)} placeholder="Enter username or phone" />
+                <Input value={loginPhone} onChange={e => setLoginPhone(e.target.value)} placeholder="Enter username, +63... or 09..." />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label>Password</Label>
                 <Input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Enter password" />
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Logging in...' : 'Login'}
               </Button>
-              <p className="text-xs text-center text-muted-foreground">
-                Don&apos;t have an account?{' '}
-                <button type="button" className="text-secondary font-medium hover:underline" onClick={() => setTab('register')}>Register</button>
+              <p className="text-center text-sm text-muted-foreground">
+                Don't have an account?{' '}
+                <button type="button" onClick={() => setTab('register')} className="text-secondary font-medium hover:underline">Register</button>
               </p>
             </form>
           </TabsContent>
 
           <TabsContent value="register">
-            <form onSubmit={handleRegister} className="space-y-4 pt-2">
-              <div className="space-y-2">
+            <form onSubmit={handleRegister} className="space-y-3 mt-4">
+              <div>
                 <Label>Username</Label>
                 <Input value={regUsername} onChange={e => setRegUsername(e.target.value)} placeholder="Choose a username" />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label>Country</Label>
                 <Select value={regCountryCode} onValueChange={setRegCountryCode}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select country" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {COUNTRY_CODES.map(country => (
-                      <SelectItem key={`${country.flag}-${country.code}`} value={country.code}>
-                        {country.flag} {country.name} ({country.code})
+                    {COUNTRY_CODES.map(c => (
+                      <SelectItem key={`${c.code}-${c.flag}`} value={c.code}>
+                        {c.flag} {c.name} ({c.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label>Mobile Number</Label>
                 <div className="flex gap-2">
-                  <div className="flex items-center px-3 bg-muted rounded-md text-sm text-muted-foreground min-w-fit">
+                  <div className="flex items-center px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground min-w-[60px] justify-center">
                     {regCountryCode}
                   </div>
                   <Input
@@ -153,33 +145,29 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                     onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="Phone number"
                     maxLength={15}
+                    className="flex-1"
                   />
                 </div>
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label>Password</Label>
                 <Input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} placeholder="Create a password" />
               </div>
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreeTerms}
-                  onChange={e => setAgreeTerms(e.target.checked)}
-                  className="mt-1 accent-primary"
-                />
+              <div className="flex items-start gap-2">
+                <input type="checkbox" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} className="mt-1 accent-primary" />
                 <span className="text-xs text-muted-foreground">
                   I agree to the{' '}
                   <Link to="/terms" className="text-secondary hover:underline" target="_blank">Terms & Conditions</Link>
                   {' '}and{' '}
                   <Link to="/privacy" className="text-secondary hover:underline" target="_blank">Privacy Policy</Link>
                 </span>
-              </label>
+              </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Registering...' : 'Register'}
               </Button>
-              <p className="text-xs text-center text-muted-foreground">
+              <p className="text-center text-sm text-muted-foreground">
                 Already have an account?{' '}
-                <button type="button" className="text-secondary font-medium hover:underline" onClick={() => setTab('login')}>Login</button>
+                <button type="button" onClick={() => setTab('login')} className="text-secondary font-medium hover:underline">Login</button>
               </p>
             </form>
           </TabsContent>

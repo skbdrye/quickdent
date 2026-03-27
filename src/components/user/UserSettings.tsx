@@ -1,62 +1,149 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/lib/store';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
-import { Settings, User, Lock } from 'lucide-react';
+import { Lock, Phone } from 'lucide-react';
 
-export function UserSettings() {
-  const { user } = useAuthStore();
+export default function UserSettings() {
   const { toast } = useToast();
+  const { user, setUser } = useAuthStore();
   const [phone, setPhone] = useState(user?.phone || '');
-  const [password, setPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!phone) {
-      toast({ title: 'Error', description: 'Phone number is required', variant: 'destructive' });
+  async function updatePhone() {
+    if (!user || !phone.trim()) return;
+    setSavingPhone(true);
+
+    // Normalize phone
+    let normalizedPhone = phone.trim().replace(/\s+/g, '');
+    if (normalizedPhone.startsWith('0')) {
+      normalizedPhone = normalizedPhone.substring(1);
+    }
+    if (normalizedPhone.startsWith('+63')) {
+      normalizedPhone = normalizedPhone.substring(3);
+    }
+
+    const { error } = await supabase
+      .from('users')
+      .update({ phone: normalizedPhone })
+      .eq('id', user.id);
+
+    if (error) {
+      if (error.code === '23505') {
+        toast({ title: 'Error', description: 'This phone number is already registered', variant: 'destructive' });
+      } else {
+        toast({ title: 'Error', description: 'Failed to update phone', variant: 'destructive' });
+      }
+    } else {
+      setUser({ ...user, phone: normalizedPhone });
+      toast({ title: 'Updated', description: 'Phone number updated successfully' });
+    }
+    setSavingPhone(false);
+  }
+
+  async function updatePassword() {
+    if (!user) return;
+    if (newPassword !== confirmPassword) {
+      toast({ title: 'Error', description: 'Passwords do not match', variant: 'destructive' });
       return;
     }
-    toast({ title: 'Saved', description: 'Settings updated successfully' });
-    setPassword('');
-  };
+    if (newPassword.length < 6) {
+      toast({ title: 'Error', description: 'Password must be at least 6 characters', variant: 'destructive' });
+      return;
+    }
+
+    setSavingPassword(true);
+
+    // Verify current password
+    const { data: userData } = await supabase
+      .from('users')
+      .select('password_hash')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!userData || userData.password_hash !== currentPassword) {
+      toast({ title: 'Error', description: 'Current password is incorrect', variant: 'destructive' });
+      setSavingPassword(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from('users')
+      .update({ password_hash: newPassword })
+      .eq('id', user.id);
+
+    if (error) {
+      toast({ title: 'Error', description: 'Failed to update password', variant: 'destructive' });
+    } else {
+      toast({ title: 'Updated', description: 'Password updated successfully' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+    setSavingPassword(false);
+  }
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage your account preferences</p>
+        <p className="text-muted-foreground">Manage your account settings</p>
       </div>
 
-      <Card className="border-border/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Settings className="h-4 w-4 text-secondary" /> Account Settings</CardTitle>
-          <CardDescription>Update your contact information and password.</CardDescription>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Phone className="h-5 w-5" />
+            Phone Number
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Username</Label>
-              <Input value={user?.username || ''} disabled className="bg-muted" />
-              <p className="text-xs text-muted-foreground">Username cannot be changed</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="Phone number" />
-            </div>
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> New Password</Label>
-              <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Leave blank to keep current" />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="submit">Save Changes</Button>
-              <Button type="button" variant="outline" onClick={() => { setPhone(user?.phone || ''); setPassword(''); }}>
-                Cancel
-              </Button>
-            </div>
-          </form>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Phone Number</Label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="e.g. 9668810738"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Enter your phone number without country code</p>
+          </div>
+          <Button onClick={updatePhone} disabled={savingPhone}>
+            {savingPhone ? 'Saving...' : 'Update Phone'}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Lock className="h-5 w-5" />
+            Change Password
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Current Password</Label>
+            <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          </div>
+          <div>
+            <Label>New Password</Label>
+            <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          </div>
+          <div>
+            <Label>Confirm New Password</Label>
+            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          </div>
+          <Button onClick={updatePassword} disabled={savingPassword}>
+            {savingPassword ? 'Saving...' : 'Update Password'}
+          </Button>
         </CardContent>
       </Card>
     </div>

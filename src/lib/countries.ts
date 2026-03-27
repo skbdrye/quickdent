@@ -198,9 +198,26 @@ export const COUNTRY_CODES = [
 ];
 
 export function formatPhoneWithCountry(countryCode: string, phone: string): string {
-  // Remove any existing + or spaces
   const cleanPhone = phone.replace(/\D/g, '');
   return `${countryCode}${cleanPhone}`;
+}
+
+/**
+ * Normalize a phone input for login.
+ * Handles Philippine format: 09xxxxxxxxx -> +639xxxxxxxxx
+ * Also handles already formatted: +639xxxxxxxxx stays as-is
+ */
+export function normalizePhoneForLogin(input: string): string {
+  const cleaned = input.trim();
+  // If starts with 0 and looks like PH number (11 digits starting with 09)
+  if (cleaned.startsWith('0') && cleaned.length >= 10) {
+    return '+63' + cleaned.substring(1);
+  }
+  // If already has +, return as-is
+  if (cleaned.startsWith('+')) {
+    return cleaned;
+  }
+  return cleaned;
 }
 
 export function getCountryByCode(code: string) {

@@ -41,20 +41,18 @@ export function AdminLoginDialog({ open, onOpenChange }: AdminLoginDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader className="text-center space-y-3">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-            <ShieldCheck className="h-6 w-6 text-primary-foreground" />
-          </div>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader className="text-center items-center">
+          <ShieldCheck className="w-10 h-10 text-secondary mb-2" />
           <DialogTitle>Admin Login</DialogTitle>
           <DialogDescription>Access the clinic management dashboard.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div className="space-y-2">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <div>
             <Label>Username</Label>
             <Input value={username} onChange={e => setUsername(e.target.value)} placeholder="Admin username" />
           </div>
-          <div className="space-y-2">
+          <div>
             <Label>Password</Label>
             <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Admin password" />
           </div>
