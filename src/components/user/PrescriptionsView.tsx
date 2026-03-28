@@ -37,7 +37,7 @@ export default function PrescriptionsView() {
       .eq('user_id', user.id)
       .order('prescription_date', { ascending: false });
 
-    const allRx: GroupMemberPrescription[] = (ownRx || []).map((rx: any) => ({ ...rx, member_name: undefined }));
+    const allRx: GroupMemberPrescription[] = (ownRx || []).map((rx: Record<string, unknown>) => ({ ...rx, member_name: undefined }) as unknown as GroupMemberPrescription);
 
     // Load prescriptions for group members booked by this user
     const { data: groupAppts } = await supabase
@@ -62,9 +62,9 @@ export default function PrescriptionsView() {
           .order('prescription_date', { ascending: false });
 
         if (memberRx) {
-          memberRx.forEach((rx: any) => {
+          memberRx.forEach((rx: Record<string, unknown>) => {
             const member = members.find((m) => m.id === rx.group_member_id);
-            allRx.push({ ...rx, member_name: member?.member_name || 'Unknown' });
+            allRx.push({ ...rx, member_name: member?.member_name || 'Unknown' } as unknown as GroupMemberPrescription);
           });
         }
       }

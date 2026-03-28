@@ -34,6 +34,7 @@ export default function AdminPrescriptions() {
 
   useEffect(() => {
     loadPrescriptions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadPrescriptions() {

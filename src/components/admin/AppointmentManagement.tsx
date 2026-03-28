@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, FileText, Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X } from 'lucide-react';
+import { Eye, Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,6 +34,21 @@ interface GroupMember {
   gender: string | null;
   relationship: string | null;
   is_primary: boolean;
+  linked_user_id: string | null;
+  // Medical fields
+  med_q1: string | null;
+  med_q2: string | null;
+  med_q2_details: string | null;
+  med_q3: string | null;
+  med_q3_details: string | null;
+  med_q4: string | null;
+  med_q4_details: string | null;
+  med_q5: string | null;
+  med_q5_details: string | null;
+  med_q6: string | null;
+  med_last_checkup: string | null;
+  med_other: string | null;
+  med_consent: boolean | null;
 }
 
 interface PatientProfile {
@@ -69,6 +84,7 @@ interface Prescription {
   prescribed_by: string;
   prescription_date: string;
   group_member_id: number | null;
+  image_url: string | null;
 }
 
 function calculateAge(dob: string): number {
@@ -93,6 +109,7 @@ export default function AppointmentManagement() {
   const [showDetails, setShowDetails] = useState(false);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [prescriptionTarget, setPrescriptionTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
+  const [expandedGroupMember, setExpandedGroupMember] = useState<number | null>(null);
 
   // Image upload state
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -129,29 +146,31 @@ export default function AppointmentManagement() {
 
   async function viewDetails(apt: Appointment) {
     setSelectedAppointment(apt);
-    const promises: any[] = [
-      supabase.from('patient_profiles').select('*').eq('user_id', apt.user_id).maybeSingle(),
-      supabase.from('medical_assessments').select('*').eq('user_id', apt.user_id).maybeSingle(),
-      supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
-    ];
+    setExpandedGroupMember(null);
 
     if (apt.is_group_booking) {
-      promises.push(supabase.from('group_members').select('*').eq('appointment_id', apt.id));
-    }
+      // For group bookings: fetch group members + prescriptions only (not the booker's profile)
+      const [gmRes, rxRes] = await Promise.all([
+        supabase.from('group_members').select('*').eq('appointment_id', apt.id),
+        supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
+      ]);
 
-    const results = await Promise.all(promises);
-    const profileRes = results[0] as { data: PatientProfile | null };
-    const medRes = results[1] as { data: MedicalAssessment | null };
-    const rxRes = results[2] as { data: Prescription[] | null };
-
-    setPatientProfile(profileRes.data);
-    setMedicalAssessment(medRes.data);
-    setPrescriptions(rxRes.data || []);
-
-    if (apt.is_group_booking) {
-      const gmRes = results[3] as { data: GroupMember[] | null };
-      setGroupMembers(gmRes.data || []);
+      setGroupMembers((gmRes.data || []) as unknown as GroupMember[]);
+      setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
+      // Don't show the booker's profile/assessment for group bookings
+      setPatientProfile(null);
+      setMedicalAssessment(null);
     } else {
+      // For individual bookings: fetch patient profile + medical assessment + prescriptions
+      const [profileRes, medRes, rxRes] = await Promise.all([
+        supabase.from('patient_profiles').select('*').eq('user_id', apt.user_id).maybeSingle(),
+        supabase.from('medical_assessments').select('*').eq('user_id', apt.user_id).maybeSingle(),
+        supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
+      ]);
+
+      setPatientProfile(profileRes.data as PatientProfile | null);
+      setMedicalAssessment(medRes.data as MedicalAssessment | null);
+      setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
       setGroupMembers([]);
     }
 
@@ -186,8 +205,7 @@ export default function AppointmentManagement() {
 
     setUploading(true);
     try {
-      // Create the prescription record first
-      const insertData: any = {
+      const insertData: Record<string, unknown> = {
         user_id: prescriptionTarget.userId,
         appointment_id: prescriptionTarget.appointmentId,
         medications: prescriptionTarget.memberName ? `Prescription for ${prescriptionTarget.memberName}` : 'Prescription image uploaded',
@@ -213,15 +231,13 @@ export default function AppointmentManagement() {
 
       toast({ title: 'Success', description: 'Prescription saved successfully' });
 
-      // Refresh prescriptions
       const { data: updatedRx } = await supabase
         .from('prescriptions')
         .select('*')
         .eq('appointment_id', prescriptionTarget.appointmentId)
         .order('prescription_date', { ascending: false });
-      setPrescriptions(updatedRx || []);
+      setPrescriptions((updatedRx || []) as unknown as Prescription[]);
 
-      // Reset form
       setSelectedImage(null);
       setImagePreview(null);
       setPrescribedBy('Dr. Admin');
@@ -256,6 +272,48 @@ export default function AppointmentManagement() {
       case 'No Show': return 'noshow';
       default: return 'pending';
     }
+  }
+
+  // Render medical history for a group member
+  function renderMemberMedical(member: GroupMember) {
+    const questions = [
+      { label: 'Good health?', val: member.med_q1 },
+      { label: 'Under medical treatment?', val: member.med_q2, detail: member.med_q2_details },
+      { label: 'Maintenance medications?', val: member.med_q3, detail: member.med_q3_details },
+      { label: 'Hospitalized before?', val: member.med_q4, detail: member.med_q4_details },
+      { label: 'Known allergies?', val: member.med_q5, detail: member.med_q5_details },
+      { label: 'Pregnant/nursing?', val: member.med_q6 },
+    ];
+
+    const hasMedData = questions.some(q => q.val);
+
+    if (!hasMedData) {
+      return <p className="text-xs text-muted-foreground italic">No medical history provided</p>;
+    }
+
+    return (
+      <div className="space-y-1.5 text-sm">
+        {questions.map((q, i) => (
+          <div key={i}>
+            <span className="text-muted-foreground">{q.label}</span>{' '}
+            <span className="text-foreground font-medium">{q.val || 'N/A'}</span>
+            {q.detail && <span className="text-muted-foreground"> - {q.detail}</span>}
+          </div>
+        ))}
+        {member.med_last_checkup && (
+          <div>
+            <span className="text-muted-foreground">Last checkup:</span>{' '}
+            <span className="text-foreground">{new Date(member.med_last_checkup + 'T00:00:00').toLocaleDateString()}</span>
+          </div>
+        )}
+        {member.med_other && (
+          <div>
+            <span className="text-muted-foreground">Other:</span>{' '}
+            <span className="text-foreground">{member.med_other}</span>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -367,7 +425,11 @@ export default function AppointmentManagement() {
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Patient Details - {selectedAppointment?.patient_name}</DialogTitle>
+            <DialogTitle>
+              {selectedAppointment?.is_group_booking
+                ? `Group Booking - Booked by ${selectedAppointment?.patient_name}`
+                : `Patient Details - ${selectedAppointment?.patient_name}`}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -384,8 +446,8 @@ export default function AppointmentManagement() {
               </div>
             </div>
 
-            {/* Patient Profile */}
-            {patientProfile && (
+            {/* Individual booking: Show patient profile & medical assessment */}
+            {!selectedAppointment?.is_group_booking && patientProfile && (
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Patient Profile</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm bg-muted/50 p-3 rounded-lg">
@@ -403,8 +465,7 @@ export default function AppointmentManagement() {
               </div>
             )}
 
-            {/* Medical Assessment */}
-            {medicalAssessment && (
+            {!selectedAppointment?.is_group_booking && medicalAssessment && (
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Medical History</h3>
                 <div className="space-y-2 text-sm bg-muted/50 p-3 rounded-lg">
@@ -420,34 +481,69 @@ export default function AppointmentManagement() {
               </div>
             )}
 
-            {/* Group Members */}
+            {/* Group Members with expandable medical history */}
             {selectedAppointment?.is_group_booking && groupMembers.length > 0 && (
               <div>
-                <h3 className="font-semibold text-foreground mb-2">Group Members</h3>
+                <h3 className="font-semibold text-foreground mb-2">Group Members ({groupMembers.length})</h3>
                 <div className="space-y-2">
-                  {groupMembers.map((member) => (
-                    <div key={member.id} className="bg-muted/50 p-3 rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-medium text-foreground">{member.member_name} {member.is_primary && <Badge variant="outline" className="text-xs ml-1">Primary</Badge>}</span>
-                        <span className="text-sm text-muted-foreground">{member.appointment_time}</span>
+                  {groupMembers.map((member) => {
+                    const isExpanded = expandedGroupMember === member.id;
+                    return (
+                      <div key={member.id} className="bg-muted/50 rounded-lg overflow-hidden border border-border/30">
+                        {/* Member header - clickable to expand */}
+                        <button
+                          className="w-full p-3 flex items-center justify-between hover:bg-muted/80 transition-colors"
+                          onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}
+                        >
+                          <div className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground">{member.member_name}</span>
+                              {member.is_primary && <Badge variant="outline" className="text-[10px]">Primary</Badge>}
+                              {member.relationship && <span className="text-xs text-muted-foreground">({member.relationship})</span>}
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                              <span>Time: {member.appointment_time}</span>
+                              {member.date_of_birth && <span>Age: {calculateAge(member.date_of_birth)}</span>}
+                              {member.gender && <span>{member.gender}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+
+                        {/* Expanded details */}
+                        {isExpanded && (
+                          <div className="px-3 pb-3 border-t border-border/30 space-y-3">
+                            {/* Personal info */}
+                            <div className="grid grid-cols-2 gap-2 text-sm pt-2">
+                              {member.date_of_birth && (
+                                <div><span className="text-muted-foreground">DOB:</span> {new Date(member.date_of_birth + 'T00:00:00').toLocaleDateString()}</div>
+                              )}
+                              {member.phone && <div><span className="text-muted-foreground">Phone:</span> {member.phone}</div>}
+                            </div>
+
+                            {/* Medical History */}
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Medical History</p>
+                              {renderMemberMedical(member)}
+                            </div>
+
+                            {/* Upload prescription button */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}
+                            >
+                              <Upload className="h-3 w-3" />
+                              Upload Prescription
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                      <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
-                        {member.date_of_birth && <div>Age: {calculateAge(member.date_of_birth)}</div>}
-                        {member.gender && <div>Gender: {member.gender}</div>}
-                        {member.phone && <div>Phone: {member.phone}</div>}
-                        {member.relationship && <div>Relationship: {member.relationship}</div>}
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-2 gap-1"
-                        onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}
-                      >
-                        <Upload className="h-3 w-3" />
-                        Upload Prescription
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -467,35 +563,40 @@ export default function AppointmentManagement() {
                 <p className="text-sm text-muted-foreground">No prescriptions yet</p>
               ) : (
                 <div className="space-y-2">
-                  {prescriptions.map((rx) => (
-                    <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <span className="font-medium text-foreground">{rx.prescribed_by}</span>
-                          {rx.group_member_id && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              (Group member)
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-muted-foreground text-xs">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
-                      </div>
-                      {rx.image_url && (
-                        <div
-                          className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors"
-                          onClick={() => setViewingImage(rx.image_url)}
-                        >
-                          <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
-                          <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">
-                            Click to view full size
+                  {prescriptions.map((rx) => {
+                    const memberName = rx.group_member_id
+                      ? groupMembers.find(m => m.id === rx.group_member_id)?.member_name
+                      : undefined;
+                    return (
+                      <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="font-medium text-foreground">{rx.prescribed_by}</span>
+                            {memberName && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                (For: {memberName})
+                              </span>
+                            )}
                           </div>
+                          <span className="text-muted-foreground text-xs">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
                         </div>
-                      )}
-                      {!rx.image_url && rx.medications && (
-                        <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>
-                      )}
-                    </div>
-                  ))}
+                        {rx.image_url && (
+                          <div
+                            className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors"
+                            onClick={() => setViewingImage(rx.image_url)}
+                          >
+                            <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-card" />
+                            <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">
+                              Click to view full size
+                            </div>
+                          </div>
+                        )}
+                        {!rx.image_url && rx.medications && (
+                          <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -548,7 +649,7 @@ export default function AppointmentManagement() {
                 </button>
               ) : (
                 <div className="relative rounded-lg overflow-hidden border border-border">
-                  <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain bg-white" />
+                  <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain bg-card" />
                   <div className="absolute top-2 right-2 flex gap-1">
                     <Button
                       variant="secondary"
@@ -612,7 +713,7 @@ export default function AppointmentManagement() {
             </DialogTitle>
           </DialogHeader>
           {viewingImage && (
-            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
+            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-card max-h-[70vh]" />
           )}
         </DialogContent>
       </Dialog>

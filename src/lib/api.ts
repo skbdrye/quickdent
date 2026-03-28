@@ -480,7 +480,7 @@ export const prescriptionsAPI = {
   },
 
   async update(id: number, updates: Partial<Prescription>) {
-    const { id: _, created_at, ...updateData } = updates as any;
+    const { id: _, created_at, ...updateData } = updates as Partial<Prescription> & { id?: number; created_at?: string };
     const { error } = await supabase
       .from('prescriptions')
       .update(updateData)
@@ -568,13 +568,13 @@ export const clinicSettingsAPI = {
     if (existing) {
       const { error } = await supabase
         .from('clinic_settings')
-        .update({ setting_value: schedule as any, updated_at: new Date().toISOString() })
+        .update({ setting_value: schedule as unknown as Record<string, unknown>, updated_at: new Date().toISOString() })
         .eq('setting_key', 'schedule');
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from('clinic_settings')
-        .insert([{ setting_key: 'schedule', setting_value: schedule as any }] as any);
+        .insert([{ setting_key: 'schedule', setting_value: schedule as unknown as Record<string, unknown> }] as unknown as Record<string, unknown>[]);
       if (error) throw error;
     }
   },

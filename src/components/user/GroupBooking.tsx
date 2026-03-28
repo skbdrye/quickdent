@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [expandedMember, setExpandedMember] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const membersCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user?.id) { fetchProfile(user.id); fetchAssessment(user.id); }
@@ -236,7 +237,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       </Card>
 
       {/* Members */}
-      <Card className="border-border/50">
+      <Card className="border-border/50" ref={membersCardRef}>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg flex items-center gap-2"><Users className="w-5 h-5" /> Members ({members.length}/5)</CardTitle>
@@ -408,7 +409,15 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
               const isToday = dateStr === todayStr;
               const disabled = isPast || isClosed;
               return (
-                <button key={dateStr} disabled={disabled} onClick={() => { setSelectedDate(dateStr); setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' }))); }}
+                <button key={dateStr} disabled={disabled} onClick={() => {
+                  setSelectedDate(dateStr);
+                  setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
+                  setExpandedMember(0);
+                  // Scroll back up to members section after a brief delay for state update
+                  setTimeout(() => {
+                    membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 100);
+                }}
                   className={cn(
                     'rounded-lg p-2 text-sm font-medium transition-colors',
                     disabled && 'cursor-not-allowed text-muted-foreground/30',
