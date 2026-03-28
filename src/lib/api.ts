@@ -568,13 +568,13 @@ export const clinicSettingsAPI = {
     if (existing) {
       const { error } = await supabase
         .from('clinic_settings')
-        .update({ setting_value: schedule as unknown as Record<string, unknown>, updated_at: new Date().toISOString() })
+        .update({ setting_value: JSON.parse(JSON.stringify(schedule)), updated_at: new Date().toISOString() })
         .eq('setting_key', 'schedule');
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from('clinic_settings')
-        .insert([{ setting_key: 'schedule', setting_value: schedule as unknown as Record<string, unknown> }] as unknown as Record<string, unknown>[]);
+        .insert([{ setting_key: 'schedule', setting_value: JSON.parse(JSON.stringify(schedule)) }]);
       if (error) throw error;
     }
   },

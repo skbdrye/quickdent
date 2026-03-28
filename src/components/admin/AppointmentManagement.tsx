@@ -205,7 +205,7 @@ export default function AppointmentManagement() {
 
     setUploading(true);
     try {
-      const insertData: Record<string, unknown> = {
+      const insertData = {
         user_id: prescriptionTarget.userId,
         appointment_id: prescriptionTarget.appointmentId,
         medications: prescriptionTarget.memberName ? `Prescription for ${prescriptionTarget.memberName}` : 'Prescription image uploaded',
@@ -213,10 +213,7 @@ export default function AppointmentManagement() {
         instructions: '',
         prescribed_by: prescribedBy,
         prescription_date: new Date().toISOString().split('T')[0],
-      };
-
-      if (prescriptionTarget.groupMemberId) {
-        insertData.group_member_id = prescriptionTarget.groupMemberId;
+        ...(prescriptionTarget.groupMemberId && { group_member_id: prescriptionTarget.groupMemberId }),
       }
 
       const { data: rxData, error: rxError } = await supabase
