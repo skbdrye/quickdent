@@ -1,49 +1,56 @@
 import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-background font-poppins">
-      <div className="max-w-3xl mx-auto px-4 py-12">
-        <Button variant="ghost" asChild className="mb-6">
-          <Link to="/"><ArrowLeft className="h-4 w-4 mr-2" /> Back to Home</Link>
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-12 max-w-3xl">
+        <Button variant="ghost" asChild className="mb-6 gap-2">
+          <Link to="/"><ArrowLeft className="w-4 h-4" /> Back to Home</Link>
         </Button>
 
-        <h1 className="text-3xl font-bold text-foreground mb-8">Privacy Policy</h1>
+        <h1 className="text-3xl font-bold text-foreground mb-6">Privacy Policy</h1>
 
-        <div className="prose prose-sm max-w-none text-foreground space-y-6">
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">1. Information We Collect</h2>
-            <p className="text-muted-foreground">QuickDent Dental Clinic collects personal information necessary for providing dental care services, including your name, date of birth, gender, contact information, and medical history. This information is collected when you register an account or book an appointment.</p>
-          </section>
+        <div className="prose prose-sm max-w-none text-muted-foreground space-y-4">
+          <p>
+            Abrigo-Marabe Dental Clinic ("we", "our") is committed to protecting your privacy.
+            This policy explains how we collect, use, and protect your personal information through the QuickDent platform.
+          </p>
 
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">2. How We Use Your Information</h2>
-            <p className="text-muted-foreground">Your personal information is used to: manage appointment bookings, maintain accurate medical records, provide dental care services, communicate appointment reminders and updates, and improve our services.</p>
-          </section>
+          <h2 className="text-xl font-semibold text-foreground mt-8">Information We Collect</h2>
+          <p>
+            We collect personal information including your name, phone number, date of birth, gender, address,
+            and medical history as provided through the registration and booking process.
+          </p>
 
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">3. Data Security</h2>
-            <p className="text-muted-foreground">We implement appropriate security measures to protect your personal and medical information. Access to patient records is restricted to authorized dental professionals and staff only.</p>
-          </section>
+          <h2 className="text-xl font-semibold text-foreground mt-8">How We Use Your Information</h2>
+          <p>
+            Your information is used solely for: scheduling and managing appointments, providing appropriate
+            dental care based on your medical history, and communicating with you about your appointments.
+          </p>
 
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">4. Data Sharing</h2>
-            <p className="text-muted-foreground">We do not sell or share your personal information with third parties for marketing purposes. Your medical information may only be shared with other healthcare providers with your explicit consent or as required by law.</p>
-          </section>
+          <h2 className="text-xl font-semibold text-foreground mt-8">Data Protection</h2>
+          <p>
+            We implement appropriate security measures to protect your personal data. Your medical records
+            and personal information are stored securely and accessed only by authorized clinic personnel.
+          </p>
 
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">5. Your Rights</h2>
-            <p className="text-muted-foreground">You have the right to access, correct, or request deletion of your personal information. You may also request a copy of your medical records at any time by contacting our clinic.</p>
-          </section>
+          <h2 className="text-xl font-semibold text-foreground mt-8">Data Sharing</h2>
+          <p>
+            We do not sell, trade, or share your personal information with third parties, except as required
+            by law or for the provision of dental care services.
+          </p>
 
-          <section>
-            <h2 className="text-xl font-semibold text-foreground">6. Contact Us</h2>
-            <p className="text-muted-foreground">If you have questions about this privacy policy or your personal data, please contact QuickDent Dental Clinic directly through our contact information provided on our website.</p>
-          </section>
+          <h2 className="text-xl font-semibold text-foreground mt-8">Your Rights</h2>
+          <p>
+            You have the right to access, correct, or request deletion of your personal data.
+            Contact us at the clinic for any privacy-related concerns.
+          </p>
 
-          <p className="text-sm text-muted-foreground mt-8">Last updated: March 2026</p>
+          <p className="text-xs text-muted-foreground mt-8 pt-4 border-t border-border">
+            Last updated: {new Date().getFullYear()}. Abrigo-Marabe Dental Clinic.
+          </p>
         </div>
       </div>
     </div>

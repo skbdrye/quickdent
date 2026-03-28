@@ -30,14 +30,14 @@ export function HeroSection() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="animate-fade-in-up">
               <span className="inline-block px-4 py-1.5 rounded-full bg-primary-foreground/10 text-primary-foreground/90 text-sm font-medium mb-6 backdrop-blur-sm border border-primary-foreground/10">
-                Online Dental Appointment System
+                Abrigo-Marabe Dental Clinic | Online Reservation
               </span>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-primary-foreground leading-tight mb-6">
                 Your smile,{' '}
                 <span className="bg-gradient-to-r from-primary-foreground/80 to-primary-foreground bg-clip-text">our prioriteeth</span>
               </h1>
               <p className="text-lg text-primary-foreground/70 mb-8 max-w-lg">
-                Find, book, and manage your dental appointments easily with QuickDent. Simple online booking for patients, efficient scheduling for clinics.
+                Book your dental appointments at Abrigo-Marabe Dental Clinic with ease. Simple online booking for patients, efficient scheduling for our clinic.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button size="lg" onClick={handleBookClick} className="bg-white text-teal-700 hover:bg-white/90 font-semibold gap-2 shadow-lg">

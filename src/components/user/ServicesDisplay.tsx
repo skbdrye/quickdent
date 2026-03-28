@@ -35,7 +35,7 @@ export default function ServicesDisplay() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Our Services</h1>
-        <p className="text-muted-foreground">Dental services we offer at QuickDent Clinic</p>
+        <p className="text-muted-foreground">Dental services offered at Abrigo-Marabe Dental Clinic</p>
       </div>
 
       {services.length === 0 ? (

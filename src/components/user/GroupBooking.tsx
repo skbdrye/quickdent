@@ -10,7 +10,7 @@ import { groupMembersAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { GroupMember, ClinicScheduleDay } from '@/lib/types';
+import type { GroupMember, ClinicScheduleDay, DashboardPage } from '@/lib/types';
 
 const RELATIONSHIPS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend'];
 
@@ -46,7 +46,7 @@ const emptyMember = (): Omit<GroupMember, 'id' | 'appointment_id'> => ({
   med_last_checkup: '', med_other: '', med_consent: false,
 });
 
-export function GroupBooking() {
+export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage) => void }) {
   const { addAppointment } = useAppointmentsStore();
   const { user } = useAuthStore();
   const { profile, assessment, fetchProfile, fetchAssessment, isProfileComplete, isAssessmentSubmitted } = useProfileStore();
@@ -194,6 +194,7 @@ export function GroupBooking() {
       setMembers([emptyMember()]);
       setIncludeSelf(false);
       setSelectedDate(null);
+      if (onNavigate) onNavigate('dashboard');
     } catch {
       toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
     }

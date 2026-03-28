@@ -7,15 +7,49 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useProfileStore, useAuthStore } from '@/lib/store';
 import { matchingAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { User, FileText, ChevronRight, ChevronLeft, Save } from 'lucide-react';
+import { User, FileText, ChevronRight, ChevronLeft, Save, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { calculateAge } from '@/lib/types';
+import type { DashboardPage } from '@/lib/types';
 
-export function PatientProfile() {
+interface PatientProfileProps {
+  onNavigate?: (page: DashboardPage) => void;
+}
+
+export function PatientProfile({ onNavigate }: PatientProfileProps) {
   const { profile, assessment, fetchProfile, fetchAssessment, updateProfile, updateAssessment, submitAssessment, isAssessmentSubmitted } = useProfileStore();
   const { user } = useAuthStore();
   const { toast } = useToast();
   const [step, setStep] = useState<'info' | 'medical'>('info');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // LOCAL STATE for profile form - prevents API calls on every keystroke
+  const [localProfile, setLocalProfile] = useState({
+    first_name: '',
+    last_name: '',
+    middle_name: '',
+    date_of_birth: '',
+    gender: '',
+    phone: '',
+    address: '',
+  });
+
+  // LOCAL STATE for assessment form - prevents API calls on every keystroke
+  const [localAssessment, setLocalAssessment] = useState({
+    q1: '',
+    q2: '',
+    q2_details: '',
+    q3: '',
+    q3_details: '',
+    q4: '',
+    q4_details: '',
+    q5: '',
+    q5_details: '',
+    q6: '',
+    last_checkup: '',
+    other_medical: '',
+    consent: false,
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -24,43 +58,95 @@ export function PatientProfile() {
     }
   }, [user?.id, fetchProfile, fetchAssessment]);
 
+  // Sync local state when profile loads from server
+  useEffect(() => {
+    if (profile) {
+      setLocalProfile({
+        first_name: profile.first_name || '',
+        last_name: profile.last_name || '',
+        middle_name: profile.middle_name || '',
+        date_of_birth: profile.date_of_birth || '',
+        gender: profile.gender || '',
+        phone: profile.phone || '',
+        address: profile.address || '',
+      });
+    }
+  }, [profile]);
+
+  // Sync local state when assessment loads from server
+  useEffect(() => {
+    if (assessment) {
+      setLocalAssessment({
+        q1: assessment.q1 || '',
+        q2: assessment.q2 || '',
+        q2_details: assessment.q2_details || '',
+        q3: assessment.q3 || '',
+        q3_details: assessment.q3_details || '',
+        q4: assessment.q4 || '',
+        q4_details: assessment.q4_details || '',
+        q5: assessment.q5 || '',
+        q5_details: assessment.q5_details || '',
+        q6: assessment.q6 || '',
+        last_checkup: assessment.last_checkup || '',
+        other_medical: assessment.other_medical || '',
+        consent: assessment.consent || false,
+      });
+    }
+  }, [assessment]);
+
   const handleSaveInfo = async () => {
     if (!user?.id) return;
-    if (!profile?.first_name || !profile?.last_name || !profile?.date_of_birth || !profile?.gender || !profile?.phone) {
+    if (!localProfile.first_name || !localProfile.last_name || !localProfile.date_of_birth || !localProfile.gender || !localProfile.phone) {
       toast({ title: 'Error', description: 'Please fill all required fields', variant: 'destructive' });
       return;
     }
-    await updateProfile(user.id, profile);
+    setIsSaving(true);
+    try {
+      await updateProfile(user.id, localProfile);
 
-    // Check for matching group members (non-registered person merge)
-    if (profile.first_name && profile.last_name && profile.date_of_birth && profile.gender) {
-      const result = await matchingAPI.checkAndMerge(user.id, profile.first_name, profile.last_name, profile.date_of_birth, profile.gender);
-      if (result.merged) {
-        toast({ title: 'Records Found', description: `${result.count} previous record(s) linked to your account.` });
-        await fetchAssessment(user.id);
+      // Check for matching group members (non-registered person merge)
+      if (localProfile.first_name && localProfile.last_name && localProfile.date_of_birth && localProfile.gender) {
+        const result = await matchingAPI.checkAndMerge(user.id, localProfile.first_name, localProfile.last_name, localProfile.date_of_birth, localProfile.gender);
+        if (result.merged) {
+          toast({ title: 'Records Found', description: `${result.count} previous record(s) linked to your account.` });
+          await fetchAssessment(user.id);
+        }
       }
-    }
 
-    toast({ title: 'Saved', description: 'Patient info updated' });
-    setStep('medical');
+      toast({ title: 'Saved', description: 'Patient info updated' });
+      setStep('medical');
+    } catch {
+      toast({ title: 'Error', description: 'Failed to save profile', variant: 'destructive' });
+    }
+    setIsSaving(false);
   };
 
   const handleSubmitAssessment = async () => {
-    if (!user?.id || !assessment) return;
-    const required: ('q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'q6')[] = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+    if (!user?.id) return;
+    const required: (keyof typeof localAssessment)[] = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
     for (const q of required) {
-      if (!assessment[q]) {
+      if (!localAssessment[q]) {
         toast({ title: 'Incomplete', description: 'Please answer all medical questions', variant: 'destructive' });
         return;
       }
     }
-    if (!assessment.consent) {
+    if (!localAssessment.consent) {
       toast({ title: 'Consent required', description: 'Please acknowledge the consent', variant: 'destructive' });
       return;
     }
-    await updateAssessment(user.id, { ...assessment, is_submitted: true });
-    await submitAssessment(user.id);
-    toast({ title: 'Assessment submitted', description: 'Your medical assessment has been saved.' });
+    setIsSaving(true);
+    try {
+      await updateAssessment(user.id, { ...localAssessment, is_submitted: true });
+      await submitAssessment(user.id);
+      toast({ title: 'Assessment submitted', description: 'Your medical assessment has been saved.' });
+      // Navigate back to dashboard after successful submission
+      if (onNavigate) {
+        onNavigate('dashboard');
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Failed to submit assessment', variant: 'destructive' });
+    }
+    setIsSaving(false);
   };
 
   const questions = [
@@ -72,15 +158,15 @@ export function PatientProfile() {
     { key: 'q6' as const, text: 'Are you currently pregnant or nursing?' },
   ];
 
-  const handleUpdateProfile = (data: Record<string, unknown>) => {
-    if (user?.id) updateProfile(user.id, data);
+  const updateLocalProfile = (data: Partial<typeof localProfile>) => {
+    setLocalProfile(prev => ({ ...prev, ...data }));
   };
 
-  const handleUpdateAssessment = (data: Record<string, unknown>) => {
-    if (user?.id) updateAssessment(user.id, data);
+  const updateLocalAssessment = (data: Partial<typeof localAssessment>) => {
+    setLocalAssessment(prev => ({ ...prev, ...data }));
   };
 
-  const age = profile?.date_of_birth ? calculateAge(profile.date_of_birth) : null;
+  const age = localProfile.date_of_birth ? calculateAge(localProfile.date_of_birth) : null;
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -96,7 +182,7 @@ export function PatientProfile() {
           </div>
           <div>
             <p className="font-semibold text-foreground">
-              {profile?.first_name || profile?.last_name ? `${profile.first_name} ${profile.last_name}`.trim() : user?.username || 'Not set'}
+              {localProfile.first_name || localProfile.last_name ? `${localProfile.first_name} ${localProfile.last_name}`.trim() : user?.username || 'Not set'}
             </p>
             <p className="text-xs text-muted-foreground">
               {isAssessmentSubmitted() ? 'Profile & Assessment complete' : 'Assessment pending'}
@@ -113,27 +199,27 @@ export function PatientProfile() {
             <CardDescription>Core personal and contact information.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Last Name *</Label>
-                <Input value={profile?.last_name || ''} onChange={e => handleUpdateProfile({ last_name: e.target.value })} placeholder="Last name" />
+                <Input value={localProfile.last_name} onChange={e => updateLocalProfile({ last_name: e.target.value })} placeholder="Last name" />
               </div>
               <div>
                 <Label>First Name *</Label>
-                <Input value={profile?.first_name || ''} onChange={e => handleUpdateProfile({ first_name: e.target.value })} placeholder="First name" />
+                <Input value={localProfile.first_name} onChange={e => updateLocalProfile({ first_name: e.target.value })} placeholder="First name" />
               </div>
               <div>
                 <Label>Middle Name</Label>
-                <Input value={profile?.middle_name || ''} onChange={e => handleUpdateProfile({ middle_name: e.target.value })} placeholder="Middle name" />
+                <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value })} placeholder="Middle name" />
               </div>
               <div>
                 <Label>Date of Birth *</Label>
-                <Input type="date" value={profile?.date_of_birth || ''} onChange={e => handleUpdateProfile({ date_of_birth: e.target.value })} />
+                <Input type="date" value={localProfile.date_of_birth} onChange={e => updateLocalProfile({ date_of_birth: e.target.value })} />
                 {age !== null && <p className="text-xs text-muted-foreground mt-1">Age: {age} years old</p>}
               </div>
               <div>
                 <Label>Gender *</Label>
-                <Select value={profile?.gender || ''} onValueChange={v => handleUpdateProfile({ gender: v })}>
+                <Select value={localProfile.gender} onValueChange={v => updateLocalProfile({ gender: v })}>
                   <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Male">Male</SelectItem>
@@ -143,15 +229,15 @@ export function PatientProfile() {
               </div>
               <div>
                 <Label>Mobile Number *</Label>
-                <Input value={profile?.phone || ''} onChange={e => handleUpdateProfile({ phone: e.target.value })} placeholder="Phone" />
+                <Input value={localProfile.phone} onChange={e => updateLocalProfile({ phone: e.target.value })} placeholder="Phone" />
               </div>
             </div>
             <div>
               <Label>Home Address</Label>
-              <Input value={profile?.address || ''} onChange={e => handleUpdateProfile({ address: e.target.value })} placeholder="Address" />
+              <Input value={localProfile.address} onChange={e => updateLocalProfile({ address: e.target.value })} placeholder="Address" />
             </div>
-            <Button onClick={handleSaveInfo} className="w-full gap-2">
-              Continue to Medical History <ChevronRight className="w-4 h-4" />
+            <Button onClick={handleSaveInfo} className="w-full gap-2" disabled={isSaving}>
+              {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <>Continue to Medical History <ChevronRight className="w-4 h-4" /></>}
             </Button>
           </CardContent>
         </Card>
@@ -169,37 +255,37 @@ export function PatientProfile() {
                   <div className="flex gap-4 mt-1.5">
                     {(['yes', 'no'] as const).map(val => (
                       <label key={val} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" checked={assessment?.[q.key] === val}
-                          onChange={() => handleUpdateAssessment({ [q.key]: val })} className="accent-secondary" />
+                        <input type="radio" checked={localAssessment[q.key] === val}
+                          onChange={() => updateLocalAssessment({ [q.key]: val })} className="accent-secondary" />
                         {val.charAt(0).toUpperCase() + val.slice(1)}
                       </label>
                     ))}
                   </div>
-                  {'detailKey' in q && q.detailKey && assessment?.[q.key] === 'yes' && (
+                  {'detailKey' in q && q.detailKey && localAssessment[q.key] === 'yes' && (
                     <Input className="mt-2" placeholder="Please specify"
-                      value={assessment?.[q.detailKey] || ''}
-                      onChange={e => handleUpdateAssessment({ [q.detailKey!]: e.target.value })} />
+                      value={localAssessment[q.detailKey] || ''}
+                      onChange={e => updateLocalAssessment({ [q.detailKey!]: e.target.value })} />
                   )}
                 </li>
               ))}
             </ol>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Date of last medical check-up</Label>
-                <Input type="date" value={assessment?.last_checkup || ''} onChange={e => handleUpdateAssessment({ last_checkup: e.target.value })} />
+                <Input type="date" value={localAssessment.last_checkup} onChange={e => updateLocalAssessment({ last_checkup: e.target.value })} />
               </div>
               <div>
                 <Label>Other medical conditions</Label>
-                <Input value={assessment?.other_medical || ''} onChange={e => handleUpdateAssessment({ other_medical: e.target.value })} placeholder="Optional" />
+                <Input value={localAssessment.other_medical} onChange={e => updateLocalAssessment({ other_medical: e.target.value })} placeholder="Optional" />
               </div>
             </div>
 
             <div className="bg-muted/50 rounded-lg p-4">
               <h4 className="font-semibold text-sm text-foreground mb-2">Consent & Acknowledgement</h4>
               <div className="flex items-start gap-2">
-                <Checkbox checked={assessment?.consent || false}
-                  onCheckedChange={c => handleUpdateAssessment({ consent: c === true })} className="mt-0.5" />
+                <Checkbox checked={localAssessment.consent}
+                  onCheckedChange={c => updateLocalAssessment({ consent: c === true })} className="mt-0.5" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   I acknowledge that I have truthfully completed the questionnaire. I agree to disclose all past illnesses, medical, and dental history. I understand that providing incorrect information can be harmful to my health.
                 </p>
@@ -210,8 +296,9 @@ export function PatientProfile() {
               <Button variant="outline" onClick={() => setStep('info')} className="gap-2">
                 <ChevronLeft className="w-4 h-4" /> Back to Info
               </Button>
-              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isAssessmentSubmitted()}>
-                <Save className="w-4 h-4" /> {isAssessmentSubmitted() ? 'Already Submitted' : 'Submit Assessment'}
+              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isAssessmentSubmitted() || isSaving}>
+                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> :
+                  <><Save className="w-4 h-4" /> {isAssessmentSubmitted() ? 'Already Submitted' : 'Submit Assessment'}</>}
               </Button>
             </div>
           </CardContent>

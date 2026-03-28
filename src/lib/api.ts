@@ -459,6 +459,16 @@ export const prescriptionsAPI = {
     return (data || []) as unknown as Prescription[];
   },
 
+  async fetchByAppointment(appointmentId: number): Promise<Prescription[]> {
+    const { data, error } = await supabase
+      .from('prescriptions')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as Prescription[];
+  },
+
   async create(prescription: Omit<Prescription, 'id' | 'created_at'>) {
     const { data, error } = await supabase
       .from('prescriptions')
@@ -467,6 +477,33 @@ export const prescriptionsAPI = {
       .single();
     if (error) throw error;
     return data as unknown as Prescription;
+  },
+
+  async update(id: number, updates: Partial<Prescription>) {
+    const { id: _, created_at, ...updateData } = updates as any;
+    const { error } = await supabase
+      .from('prescriptions')
+      .update(updateData)
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async uploadImage(file: File, prescriptionId: number): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const fileName = `prescription_${prescriptionId}_${Date.now()}.${ext}`;
+    const filePath = `prescriptions/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('prescriptions')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabase.storage
+      .from('prescriptions')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
   },
 };
 

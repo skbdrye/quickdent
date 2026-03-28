@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, LogOut, Menu, X, Users, Clock, Stethoscope } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, LogOut, Menu, X, Users, Clock, Stethoscope, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/lib/store';
 import type { AdminPage } from '@/lib/types';
@@ -15,6 +15,7 @@ const navItems: { page: AdminPage; icon: typeof LayoutDashboard; label: string }
   { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'appointments', icon: CalendarCheck, label: 'Appointments' },
   { page: 'patients', icon: Users, label: 'Patients' },
+  { page: 'prescriptions', icon: FileText, label: 'Prescriptions' },
   { page: 'schedule', icon: Clock, label: 'Clinic Schedule' },
   { page: 'services', icon: Stethoscope, label: 'Services' },
 ];

@@ -22,11 +22,11 @@ export default function UserDashboardPage() {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <UserDashboard onNavigate={setActivePage} />;
-      case 'appointments': return <AppointmentBooking />;
-      case 'group-booking': return <GroupBooking />;
+      case 'appointments': return <AppointmentBooking onNavigate={setActivePage} />;
+      case 'group-booking': return <GroupBooking onNavigate={setActivePage} />;
       case 'services': return <ServicesDisplay />;
       case 'prescriptions': return <PrescriptionsView />;
-      case 'profile': return <PatientProfile />;
+      case 'profile': return <PatientProfile onNavigate={setActivePage} />;
       case 'settings': return <UserSettings />;
       default: return <UserDashboard onNavigate={setActivePage} />;
     }

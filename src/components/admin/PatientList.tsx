@@ -41,6 +41,7 @@ interface PrescriptionData {
   medications: string;
   diagnosis: string | null;
   instructions: string | null;
+  image_url: string | null;
   prescribed_by: string;
   prescription_date: string;
 }
@@ -218,9 +219,18 @@ export default function PatientList() {
                         <span className="font-medium text-foreground">{rx.prescribed_by}</span>
                         <span className="text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
                       </div>
-                      {rx.diagnosis && <div><span className="text-muted-foreground">Diagnosis:</span> {rx.diagnosis}</div>}
-                      <div><span className="text-muted-foreground">Medications:</span> {rx.medications}</div>
-                      {rx.instructions && <div><span className="text-muted-foreground">Instructions:</span> {rx.instructions}</div>}
+                      {rx.image_url ? (
+                        <a href={rx.image_url} target="_blank" rel="noopener noreferrer" className="block mt-2 rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors">
+                          <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
+                          <div className="text-center py-1 text-xs text-secondary bg-muted/30">Click to view full size</div>
+                        </a>
+                      ) : (
+                        <>
+                          {rx.diagnosis && <div><span className="text-muted-foreground">Diagnosis:</span> {rx.diagnosis}</div>}
+                          <div><span className="text-muted-foreground">Medications:</span> {rx.medications}</div>
+                          {rx.instructions && <div><span className="text-muted-foreground">Instructions:</span> {rx.instructions}</div>}
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

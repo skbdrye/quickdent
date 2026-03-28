@@ -90,6 +90,7 @@ export interface Prescription {
   medications: string;
   diagnosis: string;
   instructions: string;
+  image_url?: string | null;
   prescription_date: string;
   created_at?: string;
 }
@@ -118,7 +119,7 @@ export interface TimeSlot {
 }
 
 export type DashboardPage = 'dashboard' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions';
-export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services';
+export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services' | 'prescriptions';
 
 export function calculateAge(dateOfBirth: string): number {
   const today = new Date();

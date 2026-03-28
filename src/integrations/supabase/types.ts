@@ -318,6 +318,7 @@ export type Database = {
           diagnosis: string | null
           group_member_id: number | null
           id: number
+          image_url: string | null
           instructions: string | null
           medications: string
           prescribed_by: string
@@ -330,6 +331,7 @@ export type Database = {
           diagnosis?: string | null
           group_member_id?: number | null
           id?: never
+          image_url?: string | null
           instructions?: string | null
           medications: string
           prescribed_by: string
@@ -342,6 +344,7 @@ export type Database = {
           diagnosis?: string | null
           group_member_id?: number | null
           id?: never
+          image_url?: string | null
           instructions?: string | null
           medications?: string
           prescribed_by?: string

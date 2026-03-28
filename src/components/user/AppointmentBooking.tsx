@@ -5,7 +5,7 @@ import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } f
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ClinicScheduleDay } from '@/lib/types';
+import type { ClinicScheduleDay, DashboardPage } from '@/lib/types';
 
 function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
   const slots: { label: string; value: string; available: boolean }[] = [];
@@ -46,7 +46,7 @@ function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
   return slots;
 }
 
-export function AppointmentBooking() {
+export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: DashboardPage) => void }) {
   const { addAppointment } = useAppointmentsStore();
   const { user } = useAuthStore();
   const { profile, assessment, fetchProfile, fetchAssessment, isProfileComplete, isAssessmentSubmitted } = useProfileStore();
@@ -122,9 +122,10 @@ export function AppointmentBooking() {
         status: 'Pending',
         is_group_booking: false,
       });
-      toast({ title: 'Booked!', description: 'Pending admin approval.' });
+      toast({ title: 'Booked!', description: 'Your appointment is pending admin approval.' });
       setSelectedDate(null);
       setSelectedTime(null);
+      if (onNavigate) onNavigate('dashboard');
     } catch {
       toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
     }

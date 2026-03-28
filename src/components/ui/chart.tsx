@@ -110,10 +110,10 @@ const ChartTooltipContent = React.forwardRef<
       nameKey?: string
       labelKey?: string
       active?: boolean
-      payload?: Array<{ name?: string; value?: number; dataKey?: string; color?: string; fill?: string; payload?: any }>
-      label?: string | number
-      labelFormatter?: (value: unknown, payload: unknown) => React.ReactNode
-      formatter?: (value: unknown, name: unknown, item: unknown, index: unknown, payload: unknown) => React.ReactNode
+      payload?: Array<any>
+      label?: any
+      labelFormatter?: (value: any, payload: any) => React.ReactNode
+      formatter?: (value: any, name: any, item: any, index: any, payload: any) => React.ReactNode
       color?: string
     }
 >(
@@ -267,7 +267,7 @@ const ChartLegendContent = React.forwardRef<
   React.ComponentProps<"div"> & {
       hideIcon?: boolean
       nameKey?: string
-      payload?: Array<{ name?: string; value?: string | number; dataKey?: string; color?: string }>
+      payload?: Array<any>
       verticalAlign?: "top" | "bottom" | "middle"
     }
 >(

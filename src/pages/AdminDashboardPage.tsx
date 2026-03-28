@@ -7,6 +7,7 @@ import AppointmentManagement from '@/components/admin/AppointmentManagement';
 import PatientList from '@/components/admin/PatientList';
 import ClinicSchedule from '@/components/admin/ClinicSchedule';
 import ServiceManagement from '@/components/admin/ServiceManagement';
+import AdminPrescriptions from '@/components/admin/AdminPrescriptions';
 import type { AdminPage } from '@/lib/types';
 
 export default function AdminDashboardPage() {
@@ -24,6 +25,7 @@ export default function AdminDashboardPage() {
       case 'patients': return <PatientList />;
       case 'schedule': return <ClinicSchedule />;
       case 'services': return <ServiceManagement />;
+      case 'prescriptions': return <AdminPrescriptions />;
       default: return <AdminDashboard />;
     }
   };

@@ -15,10 +15,10 @@ export function ContactSection() {
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
           {[
-            { icon: Phone, label: 'Phone', value: '09668810738', sub: 'Mon-Sat, 9AM-6PM' },
+            { icon: Phone, label: 'Phone', value: '09668810738', sub: 'Mon-Sat, 8AM-7PM' },
             { icon: Mail, label: 'Email', value: 'hello@quickdent.com', sub: 'We reply within 24hrs' },
-            { icon: MapPin, label: 'Location', value: 'QuickDent Clinic', sub: 'Visit us anytime' },
-            { icon: Clock, label: 'Hours', value: '9:00 AM - 6:00 PM', sub: 'Monday to Saturday' },
+            { icon: MapPin, label: 'Location', value: 'Abrigo-Marabe Dental Clinic', sub: 'Visit us anytime' },
+            { icon: Clock, label: 'Hours', value: '8:00 AM - 7:00 PM', sub: 'Monday to Saturday' },
           ].map(({ icon: Icon, label, value, sub }) => (
             <Card key={label} className="text-center hover:shadow-md transition-shadow border-border/50">
               <CardContent className="p-6">

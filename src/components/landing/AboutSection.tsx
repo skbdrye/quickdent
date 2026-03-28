@@ -14,10 +14,10 @@ export function AboutSection() {
       <div className="container mx-auto px-4">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <div className="animate-fade-in-up">
-            <span className="text-sm font-semibold text-secondary uppercase tracking-wider">About QuickDent</span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mt-2 mb-4">Modern dental care starts here</h2>
+            <span className="text-sm font-semibold text-secondary uppercase tracking-wider">About Us</span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mt-2 mb-4">Abrigo-Marabe Dental Clinic</h2>
             <p className="text-muted-foreground mb-6">
-              QuickDent bridges the gap between patients and dental clinics. Our platform makes scheduling effortless, records organized, and communication seamless.
+              QuickDent is the online reservation system of Abrigo-Marabe Dental Clinic. Our platform makes scheduling effortless, records organized, and communication seamless.
             </p>
             <ul className="space-y-3">
               {features.map(f => (
@@ -34,8 +34,8 @@ export function AboutSection() {
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-14 h-14 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl">Q</div>
                 <div>
-                  <h3 className="font-bold text-lg text-foreground">QuickDent</h3>
-                  <p className="text-sm text-muted-foreground">Your dental care companion</p>
+                  <h3 className="font-bold text-lg text-foreground">Abrigo-Marabe</h3>
+                  <p className="text-sm text-muted-foreground">Dental Clinic | Powered by QuickDent</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

@@ -136,6 +136,7 @@ interface ProfileState {
   fetchAssessment: (userId: string) => Promise<void>;
   updateProfile: (userId: string, data: Partial<PatientProfile>) => Promise<void>;
   updateAssessment: (userId: string, data: Partial<MedicalAssessment>) => Promise<void>;
+  saveAssessment: (userId: string) => Promise<void>;
   submitAssessment: (userId: string) => Promise<void>;
   isProfileComplete: () => boolean;
   isAssessmentSubmitted: () => boolean;
@@ -160,7 +161,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   updateProfile: async (userId, data) => {
     const current = get().profile;
     const updated = { ...current, ...data, user_id: userId } as PatientProfile;
-    // Check completeness
     const isComplete = !!(updated.first_name && updated.last_name && updated.date_of_birth && updated.gender && updated.phone);
     updated.is_complete = isComplete;
     await profileAPI.upsert(updated);
@@ -168,18 +168,25 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   updateAssessment: async (userId, data) => {
+    // Only update local state - do NOT call API on every keystroke
     const current = get().assessment;
     const updated = { ...current, ...data, user_id: userId } as MedicalAssessment;
-    await assessmentAPI.upsert(updated);
     set({ assessment: updated });
   },
 
-  submitAssessment: async (userId) => {
-    await assessmentAPI.upsert({ user_id: userId, is_submitted: true, consent: true });
+  saveAssessment: async (userId) => {
+    // Explicitly save to DB (called only on form submit)
     const current = get().assessment;
-    if (current) {
-      set({ assessment: { ...current, is_submitted: true } });
-    }
+    if (!current) return;
+    await assessmentAPI.upsert({ ...current, user_id: userId });
+  },
+
+  submitAssessment: async (userId) => {
+    const current = get().assessment;
+    if (!current) return;
+    const updated = { ...current, user_id: userId, is_submitted: true, consent: true };
+    await assessmentAPI.upsert(updated);
+    set({ assessment: updated });
   },
 
   isProfileComplete: () => {
@@ -249,7 +256,10 @@ interface PrescriptionsState {
   fetchByUser: (userId: string) => Promise<void>;
   fetchByGroupMembers: (memberIds: number[]) => Promise<Prescription[]>;
   fetchAll: () => Promise<void>;
-  addPrescription: (prescription: Omit<Prescription, 'id' | 'created_at'>) => Promise<void>;
+  fetchByAppointment: (appointmentId: number) => Promise<Prescription[]>;
+  addPrescription: (prescription: Omit<Prescription, 'id' | 'created_at'>) => Promise<Prescription>;
+  updatePrescription: (id: number, updates: Partial<Prescription>) => Promise<void>;
+  uploadImage: (file: File, prescriptionId: number) => Promise<string>;
 }
 
 export const usePrescriptionsStore = create<PrescriptionsState>((set, get) => ({
@@ -272,8 +282,33 @@ export const usePrescriptionsStore = create<PrescriptionsState>((set, get) => ({
     set({ prescriptions, isLoading: false });
   },
 
+  fetchByAppointment: async (appointmentId) => {
+    return prescriptionsAPI.fetchByAppointment(appointmentId);
+  },
+
   addPrescription: async (prescription) => {
     const created = await prescriptionsAPI.create(prescription);
     set({ prescriptions: [created, ...get().prescriptions] });
+    return created;
+  },
+
+  updatePrescription: async (id, updates) => {
+    await prescriptionsAPI.update(id, updates);
+    set({
+      prescriptions: get().prescriptions.map(p =>
+        p.id === id ? { ...p, ...updates } : p
+      ),
+    });
+  },
+
+  uploadImage: async (file, prescriptionId) => {
+    const url = await prescriptionsAPI.uploadImage(file, prescriptionId);
+    await prescriptionsAPI.update(prescriptionId, { image_url: url });
+    set({
+      prescriptions: get().prescriptions.map(p =>
+        p.id === prescriptionId ? { ...p, image_url: url } : p
+      ),
+    });
+    return url;
   },
 }));

@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, FileText, Search, Filter } from 'lucide-react';
+import { Eye, FileText, Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -69,6 +68,7 @@ interface Prescription {
   instructions: string | null;
   prescribed_by: string;
   prescription_date: string;
+  group_member_id: number | null;
 }
 
 function calculateAge(dob: string): number {
@@ -92,8 +92,17 @@ export default function AppointmentManagement() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
-  const [prescriptionData, setPrescriptionData] = useState({ medications: '', diagnosis: '', instructions: '', prescribed_by: 'Dr. Admin' });
-  const [prescriptionTarget, setPrescriptionTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number }>({ userId: '', appointmentId: 0 });
+  const [prescriptionTarget, setPrescriptionTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
+
+  // Image upload state
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [prescribedBy, setPrescribedBy] = useState('Dr. Admin');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Image viewer
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
 
   useEffect(() => {
     loadAppointments();
@@ -123,7 +132,7 @@ export default function AppointmentManagement() {
     const promises: any[] = [
       supabase.from('patient_profiles').select('*').eq('user_id', apt.user_id).maybeSingle(),
       supabase.from('medical_assessments').select('*').eq('user_id', apt.user_id).maybeSingle(),
-      supabase.from('prescriptions').select('*').eq('user_id', apt.user_id).order('prescription_date', { ascending: false }),
+      supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
     ];
 
     if (apt.is_group_booking) {
@@ -149,45 +158,87 @@ export default function AppointmentManagement() {
     setShowDetails(true);
   }
 
-  async function submitPrescription() {
-    if (!prescriptionData.medications.trim()) {
-      toast({ title: 'Error', description: 'Medications field is required', variant: 'destructive' });
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Error', description: 'Please select an image file (JPG, PNG, etc.)', variant: 'destructive' });
       return;
     }
 
-    const insertData: any = {
-      user_id: prescriptionTarget.userId,
-      appointment_id: prescriptionTarget.appointmentId,
-      medications: prescriptionData.medications,
-      diagnosis: prescriptionData.diagnosis || '',
-      instructions: prescriptionData.instructions || '',
-      prescribed_by: prescriptionData.prescribed_by,
-      prescription_date: new Date().toISOString().split('T')[0],
-    };
-
-    if (prescriptionTarget.groupMemberId) {
-      insertData.group_member_id = prescriptionTarget.groupMemberId;
-    }
-
-    const { error } = await supabase.from('prescriptions').insert(insertData);
-    if (error) {
-      toast({ title: 'Error', description: 'Failed to save prescription', variant: 'destructive' });
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'Error', description: 'Image must be under 10MB', variant: 'destructive' });
       return;
     }
 
-    toast({ title: 'Success', description: 'Prescription saved successfully' });
-    setPrescriptionData({ medications: '', diagnosis: '', instructions: '', prescribed_by: 'Dr. Admin' });
-    setShowPrescriptionForm(false);
-
-    if (selectedAppointment) {
-      const { data } = await (supabase.from('prescriptions').select('*').eq('user_id', selectedAppointment.user_id).order('prescription_date', { ascending: false }) as any);
-      setPrescriptions(data || []);
-    }
+    setSelectedImage(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
   }
 
-  function openPrescriptionForm(userId: string, appointmentId: number, groupMemberId?: number) {
-    setPrescriptionTarget({ userId, appointmentId, groupMemberId });
-    setPrescriptionData({ medications: '', diagnosis: '', instructions: '', prescribed_by: 'Dr. Admin' });
+  async function submitPrescription() {
+    if (!selectedImage) {
+      toast({ title: 'Error', description: 'Please select a prescription image to upload', variant: 'destructive' });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // Create the prescription record first
+      const insertData: any = {
+        user_id: prescriptionTarget.userId,
+        appointment_id: prescriptionTarget.appointmentId,
+        medications: prescriptionTarget.memberName ? `Prescription for ${prescriptionTarget.memberName}` : 'Prescription image uploaded',
+        diagnosis: '',
+        instructions: '',
+        prescribed_by: prescribedBy,
+        prescription_date: new Date().toISOString().split('T')[0],
+      };
+
+      if (prescriptionTarget.groupMemberId) {
+        insertData.group_member_id = prescriptionTarget.groupMemberId;
+      }
+
+      const { data: rxData, error: rxError } = await supabase
+        .from('prescriptions')
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (rxError || !rxData) {
+        throw new Error('Failed to create prescription record');
+      }
+
+      toast({ title: 'Success', description: 'Prescription saved successfully' });
+
+      // Refresh prescriptions
+      const { data: updatedRx } = await supabase
+        .from('prescriptions')
+        .select('*')
+        .eq('appointment_id', prescriptionTarget.appointmentId)
+        .order('prescription_date', { ascending: false });
+      setPrescriptions(updatedRx || []);
+
+      // Reset form
+      setSelectedImage(null);
+      setImagePreview(null);
+      setPrescribedBy('Dr. Admin');
+      setShowPrescriptionForm(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Error', description: 'Failed to save prescription', variant: 'destructive' });
+    }
+    setUploading(false);
+  }
+
+  function openPrescriptionForm(userId: string, appointmentId: number, groupMemberId?: number, memberName?: string) {
+    setPrescriptionTarget({ userId, appointmentId, groupMemberId, memberName });
+    setPrescribedBy('Dr. Admin');
+    setSelectedImage(null);
+    setImagePreview(null);
     setShowPrescriptionForm(true);
   }
 
@@ -357,13 +408,13 @@ export default function AppointmentManagement() {
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Medical History</h3>
                 <div className="space-y-2 text-sm bg-muted/50 p-3 rounded-lg">
-                  <div><span className="text-muted-foreground">Currently taking medications?</span> {medicalAssessment.q1 || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Allergies?</span> {medicalAssessment.q2 || 'N/A'} {medicalAssessment.q2_details ? `- ${medicalAssessment.q2_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Medical conditions?</span> {medicalAssessment.q3 || 'N/A'} {medicalAssessment.q3_details ? `- ${medicalAssessment.q3_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Previous surgeries?</span> {medicalAssessment.q4 || 'N/A'} {medicalAssessment.q4_details ? `- ${medicalAssessment.q4_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Pregnant or nursing?</span> {medicalAssessment.q5 || 'N/A'} {medicalAssessment.q5_details ? `- ${medicalAssessment.q5_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Bleeding disorders?</span> {medicalAssessment.q6 || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Last dental checkup:</span> {medicalAssessment.last_checkup ? new Date(medicalAssessment.last_checkup + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
+                  <div><span className="text-muted-foreground">Good health?</span> {medicalAssessment.q1 || 'N/A'}</div>
+                  <div><span className="text-muted-foreground">Under medical treatment?</span> {medicalAssessment.q2 || 'N/A'} {medicalAssessment.q2_details ? `- ${medicalAssessment.q2_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Maintenance medications?</span> {medicalAssessment.q3 || 'N/A'} {medicalAssessment.q3_details ? `- ${medicalAssessment.q3_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Hospitalized before?</span> {medicalAssessment.q4 || 'N/A'} {medicalAssessment.q4_details ? `- ${medicalAssessment.q4_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Known allergies?</span> {medicalAssessment.q5 || 'N/A'} {medicalAssessment.q5_details ? `- ${medicalAssessment.q5_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Pregnant/nursing?</span> {medicalAssessment.q6 || 'N/A'}</div>
+                  <div><span className="text-muted-foreground">Last checkup:</span> {medicalAssessment.last_checkup ? new Date(medicalAssessment.last_checkup + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
                   {medicalAssessment.other_medical && <div><span className="text-muted-foreground">Other:</span> {medicalAssessment.other_medical}</div>}
                 </div>
               </div>
@@ -389,11 +440,11 @@ export default function AppointmentManagement() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mt-2"
-                        onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id)}
+                        className="mt-2 gap-1"
+                        onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}
                       >
-                        <FileText className="h-3 w-3 mr-1" />
-                        Add Prescription
+                        <Upload className="h-3 w-3" />
+                        Upload Prescription
                       </Button>
                     </div>
                   ))}
@@ -406,9 +457,9 @@ export default function AppointmentManagement() {
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-foreground">Prescriptions</h3>
                 {selectedAppointment && !selectedAppointment.is_group_booking && (
-                  <Button variant="outline" size="sm" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id)}>
-                    <FileText className="h-3 w-3 mr-1" />
-                    Add Prescription
+                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
+                    <Upload className="h-3 w-3" />
+                    Upload Prescription
                   </Button>
                 )}
               </div>
@@ -418,13 +469,31 @@ export default function AppointmentManagement() {
                 <div className="space-y-2">
                   {prescriptions.map((rx) => (
                     <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
-                      <div className="flex justify-between mb-1">
-                        <span className="font-medium text-foreground">{rx.prescribed_by}</span>
-                        <span className="text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="font-medium text-foreground">{rx.prescribed_by}</span>
+                          {rx.group_member_id && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (Group member)
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground text-xs">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
                       </div>
-                      {rx.diagnosis && <div><span className="text-muted-foreground">Diagnosis:</span> {rx.diagnosis}</div>}
-                      <div><span className="text-muted-foreground">Medications:</span> {rx.medications}</div>
-                      {rx.instructions && <div><span className="text-muted-foreground">Instructions:</span> {rx.instructions}</div>}
+                      {rx.image_url && (
+                        <div
+                          className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors"
+                          onClick={() => setViewingImage(rx.image_url)}
+                        >
+                          <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
+                          <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">
+                            Click to view full size
+                          </div>
+                        </div>
+                      )}
+                      {!rx.image_url && rx.medications && (
+                        <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -434,31 +503,117 @@ export default function AppointmentManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Prescription Form Dialog */}
+      {/* Prescription Upload Dialog */}
       <Dialog open={showPrescriptionForm} onOpenChange={setShowPrescriptionForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Prescription</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Upload Prescription Image
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {prescriptionTarget.memberName && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <span className="text-muted-foreground">Patient:</span>{' '}
+                <span className="font-medium text-foreground">{prescriptionTarget.memberName}</span>
+              </div>
+            )}
+
             <div>
               <Label>Prescribed By</Label>
-              <Input value={prescriptionData.prescribed_by} onChange={(e) => setPrescriptionData({ ...prescriptionData, prescribed_by: e.target.value })} />
+              <Input value={prescribedBy} onChange={(e) => setPrescribedBy(e.target.value)} placeholder="Doctor name" />
             </div>
+
             <div>
-              <Label>Diagnosis</Label>
-              <Input value={prescriptionData.diagnosis} onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosis: e.target.value })} placeholder="Enter diagnosis" />
+              <Label>Prescription Image *</Label>
+              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the hard copy prescription (RX)</p>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
+              {!imagePreview ? (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group"
+                >
+                  <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-2 group-hover:text-secondary transition-colors" />
+                  <p className="text-sm font-medium text-foreground">Click to select image</p>
+                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 10MB</p>
+                </button>
+              ) : (
+                <div className="relative rounded-lg overflow-hidden border border-border">
+                  <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain bg-white" />
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Replace image"
+                    >
+                      <Upload className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        setSelectedImage(null);
+                        setImagePreview(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      title="Remove image"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div>
-              <Label>Medications *</Label>
-              <Textarea value={prescriptionData.medications} onChange={(e) => setPrescriptionData({ ...prescriptionData, medications: e.target.value })} placeholder="Enter medications" rows={3} />
-            </div>
-            <div>
-              <Label>Instructions</Label>
-              <Textarea value={prescriptionData.instructions} onChange={(e) => setPrescriptionData({ ...prescriptionData, instructions: e.target.value })} placeholder="Enter instructions" rows={2} />
-            </div>
-            <Button onClick={submitPrescription} className="w-full">Save Prescription</Button>
+
+            <Button onClick={submitPrescription} className="w-full gap-2" disabled={uploading || !selectedImage}>
+              {uploading ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
+              ) : (
+                <><Upload className="h-4 w-4" /> Upload Prescription</>
+              )}
+            </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Full Image Viewer */}
+      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
+        <DialogContent className="max-w-4xl p-2">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="flex items-center justify-between">
+              <span>Prescription Image</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  if (viewingImage) {
+                    const w = window.open(viewingImage, '_blank');
+                    if (w) {
+                      w.onload = () => { w.print(); };
+                    }
+                  }
+                }}
+              >
+                <Printer className="h-3 w-3" /> Print
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+          {viewingImage && (
+            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
+          )}
         </DialogContent>
       </Dialog>
     </div>
