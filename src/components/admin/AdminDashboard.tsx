@@ -48,15 +48,16 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   async function loadStats() {
     const today = new Date().toISOString().split('T')[0];
 
-    const [patientsRes, todayRes, pendingRes, completedRes] = await Promise.all([
+    const [patientsRes, groupMembersRes, todayRes, pendingRes, completedRes] = await Promise.all([
       supabase.from('patient_profiles').select('id', { count: 'exact', head: true }),
+      supabase.from('group_members').select('id', { count: 'exact', head: true }).is('linked_user_id', null),
       supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('appointment_date', today),
       supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'Pending'),
       supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'Completed').eq('appointment_date', today),
     ]);
 
     setStats({
-      totalPatients: patientsRes.count || 0,
+      totalPatients: (patientsRes.count || 0) + (groupMembersRes.count || 0),
       todayAppointments: todayRes.count || 0,
       pendingAppointments: pendingRes.count || 0,
       completedToday: completedRes.count || 0,
@@ -180,7 +181,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       {apt.is_group_booking && (
                         <Badge variant="outline" className="text-[10px] shrink-0 gap-0.5">
                           <Users className="w-3 h-3" />
-                          Group
+                          {apt.group_member_names && apt.group_member_names.length === 1 ? 'Companion' : 'Group'}
                         </Badge>
                       )}
                     </div>

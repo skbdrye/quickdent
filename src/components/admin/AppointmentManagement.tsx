@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { appointmentsAPI, notificationsAPI } from '@/lib/api';
+import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 
 interface Appointment {
   id: number;
@@ -23,6 +25,7 @@ interface Appointment {
   is_group_booking: boolean;
   duration_min: number;
   created_at: string;
+  reschedule_count?: number;
 }
 
 interface GroupMember {
@@ -35,7 +38,6 @@ interface GroupMember {
   relationship: string | null;
   is_primary: boolean;
   linked_user_id: string | null;
-  // Medical fields
   med_q1: string | null;
   med_q2: string | null;
   med_q2_details: string | null;
@@ -99,6 +101,7 @@ function calculateAge(dob: string): number {
 export default function AppointmentManagement() {
   const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [memberMap, setMemberMap] = useState<Map<number, GroupMember[]>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -110,16 +113,50 @@ export default function AppointmentManagement() {
   const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
   const [prescriptionTarget, setPrescriptionTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
   const [expandedGroupMember, setExpandedGroupMember] = useState<number | null>(null);
+  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
 
-  // Image upload state
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [prescribedBy, setPrescribedBy] = useState('Dr. Admin');
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Image viewer
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+
+  const loadAppointments = useCallback(async () => {
+    const { data } = await supabase
+      .from('appointments')
+      .select('*')
+      .order('appointment_date', { ascending: false });
+    const apts = (data || []) as Appointment[];
+    setAppointments(apts);
+
+    // Preload group member names for display in table
+    const groupApts = apts.filter(a => a.is_group_booking);
+    if (groupApts.length > 0) {
+      const { data: members } = await supabase
+        .from('group_members')
+        .select('*')
+        .in('appointment_id', groupApts.map(a => a.id));
+      const map = new Map<number, GroupMember[]>();
+      (members || []).forEach((m: GroupMember) => {
+        const existing = map.get(m.appointment_time as unknown as number) || [];
+        // Use appointment_id as key
+        const aptId = (m as unknown as { appointment_id: number }).appointment_id;
+        const arr = map.get(aptId) || [];
+        arr.push(m as unknown as GroupMember);
+        map.set(aptId, arr);
+      });
+      // Re-map properly
+      const properMap = new Map<number, GroupMember[]>();
+      (members || []).forEach((m: unknown) => {
+        const member = m as GroupMember & { appointment_id: number };
+        const arr = properMap.get(member.appointment_id) || [];
+        arr.push(member);
+        properMap.set(member.appointment_id, arr);
+      });
+      setMemberMap(properMap);
+    }
+  }, []);
 
   useEffect(() => {
     loadAppointments();
@@ -128,69 +165,86 @@ export default function AppointmentManagement() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => loadAppointments())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  async function loadAppointments() {
-    const { data } = await supabase
-      .from('appointments')
-      .select('*')
-      .order('appointment_date', { ascending: false });
-    setAppointments(data || []);
-  }
+  }, [loadAppointments]);
 
   async function updateStatus(id: number, status: string) {
-    await supabase.from('appointments').update({ status }).eq('id', id);
+    await appointmentsAPI.updateStatus(id, status as 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled' | 'No Show');
+
+    // Send notifications to user
+    const apt = appointments.find(a => a.id === id);
+    if (apt) {
+      await notificationsAPI.create({
+        user_id: apt.user_id,
+        title: `Appointment ${status}`,
+        message: `Your appointment on ${apt.appointment_date} at ${apt.appointment_time} has been marked as ${status}.`,
+        type: status === 'Confirmed' ? 'reminder' : status === 'No Show' ? 'no_show_warning' : 'status_change',
+      });
+    }
+
     toast({ title: 'Status Updated', description: `Appointment marked as ${status}` });
     loadAppointments();
   }
+
+  const handleAdminReschedule = async (newDate: string, newTime: string) => {
+    if (!rescheduleId) return;
+    try {
+      await appointmentsAPI.reschedule(rescheduleId, newDate, newTime, true);
+      const apt = appointments.find(a => a.id === rescheduleId);
+      if (apt) {
+        await notificationsAPI.create({
+          user_id: apt.user_id,
+          title: 'Appointment Rescheduled',
+          message: `Your appointment has been rescheduled to ${newDate} at ${newTime} by the clinic.`,
+          type: 'reschedule',
+        });
+      }
+      toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
+      loadAppointments();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
+      throw err;
+    }
+  };
 
   async function viewDetails(apt: Appointment) {
     setSelectedAppointment(apt);
     setExpandedGroupMember(null);
 
     if (apt.is_group_booking) {
-      // For group bookings: fetch group members + prescriptions only (not the booker's profile)
       const [gmRes, rxRes] = await Promise.all([
         supabase.from('group_members').select('*').eq('appointment_id', apt.id),
         supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
       ]);
-
       setGroupMembers((gmRes.data || []) as unknown as GroupMember[]);
       setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
-      // Don't show the booker's profile/assessment for group bookings
       setPatientProfile(null);
       setMedicalAssessment(null);
     } else {
-      // For individual bookings: fetch patient profile + medical assessment + prescriptions
       const [profileRes, medRes, rxRes] = await Promise.all([
         supabase.from('patient_profiles').select('*').eq('user_id', apt.user_id).maybeSingle(),
         supabase.from('medical_assessments').select('*').eq('user_id', apt.user_id).maybeSingle(),
         supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
       ]);
-
       setPatientProfile(profileRes.data as PatientProfile | null);
       setMedicalAssessment(medRes.data as MedicalAssessment | null);
       setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
       setGroupMembers([]);
     }
-
     setShowDetails(true);
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.type.startsWith('image/')) {
-      toast({ title: 'Error', description: 'Please select an image file (JPG, PNG, etc.)', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Please select an image file', variant: 'destructive' });
       return;
     }
-
     if (file.size > 10 * 1024 * 1024) {
       toast({ title: 'Error', description: 'Image must be under 10MB', variant: 'destructive' });
       return;
     }
-
     setSelectedImage(file);
     const reader = new FileReader();
     reader.onload = (e) => setImagePreview(e.target?.result as string);
@@ -199,10 +253,9 @@ export default function AppointmentManagement() {
 
   async function submitPrescription() {
     if (!selectedImage) {
-      toast({ title: 'Error', description: 'Please select a prescription image to upload', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Please select a prescription image', variant: 'destructive' });
       return;
     }
-
     setUploading(true);
     try {
       const insertData = {
@@ -214,34 +267,21 @@ export default function AppointmentManagement() {
         prescribed_by: prescribedBy,
         prescription_date: new Date().toISOString().split('T')[0],
         ...(prescriptionTarget.groupMemberId && { group_member_id: prescriptionTarget.groupMemberId }),
-      }
+      };
 
-      const { data: rxData, error: rxError } = await supabase
-        .from('prescriptions')
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (rxError || !rxData) {
-        throw new Error('Failed to create prescription record');
-      }
+      const { error: rxError } = await supabase.from('prescriptions').insert(insertData).select().single();
+      if (rxError) throw new Error('Failed to create prescription record');
 
       toast({ title: 'Success', description: 'Prescription saved successfully' });
 
-      const { data: updatedRx } = await supabase
-        .from('prescriptions')
-        .select('*')
-        .eq('appointment_id', prescriptionTarget.appointmentId)
-        .order('prescription_date', { ascending: false });
+      const { data: updatedRx } = await supabase.from('prescriptions').select('*').eq('appointment_id', prescriptionTarget.appointmentId).order('prescription_date', { ascending: false });
       setPrescriptions((updatedRx || []) as unknown as Prescription[]);
-
       setSelectedImage(null);
       setImagePreview(null);
       setPrescribedBy('Dr. Admin');
       setShowPrescriptionForm(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast({ title: 'Error', description: 'Failed to save prescription', variant: 'destructive' });
     }
     setUploading(false);
@@ -255,8 +295,32 @@ export default function AppointmentManagement() {
     setShowPrescriptionForm(true);
   }
 
+  // Get display name for appointment - show group member names for group bookings
+  function getDisplayName(apt: Appointment): string {
+    if (apt.is_group_booking) {
+      const members = memberMap.get(apt.id);
+      if (members && members.length > 0) {
+        const names = members.map(m => m.member_name);
+        if (names.length === 1) return names[0];
+        if (names.length <= 2) return names.join(' & ');
+        return `${names[0]} +${names.length - 1} more`;
+      }
+    }
+    return apt.patient_name;
+  }
+
+  // Get booking type label
+  function getBookingTypeLabel(apt: Appointment): string {
+    if (!apt.is_group_booking) return 'Individual';
+    const members = memberMap.get(apt.id);
+    if (members && members.length === 1) return 'Companion';
+    return `Group (${members?.length || 0})`;
+  }
+
   const filteredAppointments = appointments.filter((apt) => {
-    const matchesSearch = apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const displayName = getDisplayName(apt);
+    const matchesSearch = displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -271,23 +335,17 @@ export default function AppointmentManagement() {
     }
   }
 
-  // Render medical history for a group member
   function renderMemberMedical(member: GroupMember) {
     const questions = [
       { label: 'Good health?', val: member.med_q1 },
-      { label: 'Under medical treatment?', val: member.med_q2, detail: member.med_q2_details },
-      { label: 'Maintenance medications?', val: member.med_q3, detail: member.med_q3_details },
-      { label: 'Hospitalized before?', val: member.med_q4, detail: member.med_q4_details },
-      { label: 'Known allergies?', val: member.med_q5, detail: member.med_q5_details },
+      { label: 'Under treatment?', val: member.med_q2, detail: member.med_q2_details },
+      { label: 'Medications?', val: member.med_q3, detail: member.med_q3_details },
+      { label: 'Hospitalized?', val: member.med_q4, detail: member.med_q4_details },
+      { label: 'Allergies?', val: member.med_q5, detail: member.med_q5_details },
       { label: 'Pregnant/nursing?', val: member.med_q6 },
     ];
-
     const hasMedData = questions.some(q => q.val);
-
-    if (!hasMedData) {
-      return <p className="text-xs text-muted-foreground italic">No medical history provided</p>;
-    }
-
+    if (!hasMedData) return <p className="text-xs text-muted-foreground italic">No medical history provided</p>;
     return (
       <div className="space-y-1.5 text-sm">
         {questions.map((q, i) => (
@@ -298,20 +356,16 @@ export default function AppointmentManagement() {
           </div>
         ))}
         {member.med_last_checkup && (
-          <div>
-            <span className="text-muted-foreground">Last checkup:</span>{' '}
-            <span className="text-foreground">{new Date(member.med_last_checkup + 'T00:00:00').toLocaleDateString()}</span>
-          </div>
+          <div><span className="text-muted-foreground">Last checkup:</span> <span className="text-foreground">{new Date(member.med_last_checkup + 'T00:00:00').toLocaleDateString()}</span></div>
         )}
         {member.med_other && (
-          <div>
-            <span className="text-muted-foreground">Other:</span>{' '}
-            <span className="text-foreground">{member.med_other}</span>
-          </div>
+          <div><span className="text-muted-foreground">Other:</span> <span className="text-foreground">{member.med_other}</span></div>
         )}
       </div>
     );
   }
+
+  const rescheduleApt = rescheduleId ? appointments.find(a => a.id === rescheduleId) : null;
 
   return (
     <div className="space-y-6">
@@ -323,19 +377,12 @@ export default function AppointmentManagement() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by patient name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+          <Input placeholder="Search by patient name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="Pending">Pending</SelectItem>
@@ -365,47 +412,49 @@ export default function AppointmentManagement() {
               <TableBody>
                 {filteredAppointments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      No appointments found
-                    </TableCell>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No appointments found</TableCell>
                   </TableRow>
                 ) : (
                   filteredAppointments.map((apt) => (
                     <TableRow key={apt.id}>
-                      <TableCell className="font-medium">{apt.patient_name}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{getDisplayName(apt)}</p>
+                          {apt.is_group_booking && (
+                            <p className="text-[11px] text-muted-foreground">Booked by {apt.patient_name}</p>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</TableCell>
                       <TableCell>{apt.appointment_time}</TableCell>
                       <TableCell>
-                        {apt.is_group_booking ? (
-                          <Badge variant="outline" className="text-xs">Group</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">Individual</Badge>
-                        )}
+                        <Badge variant="outline" className="text-xs">{getBookingTypeLabel(apt)}</Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusVariant(apt.status) as "pending" | "confirmed" | "completed" | "cancelled" | "noshow"}>
-                          {apt.status}
-                        </Badge>
+                        <Badge variant={getStatusVariant(apt.status) as "pending" | "confirmed" | "completed" | "cancelled" | "noshow"}>{apt.status}</Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => viewDetails(apt)} title="View Details">
-                            <Eye className="h-4 w-4" />
+                          <Button variant="outline" size="sm" onClick={() => viewDetails(apt)} className="gap-1.5 h-8 text-xs">
+                            <ClipboardList className="h-3.5 w-3.5" /> View Details
                           </Button>
-                          {apt.status === 'Pending' && (
-                            <Button variant="ghost" size="sm" className="text-green-600" onClick={() => updateStatus(apt.id, 'Confirmed')}>
-                              Confirm
-                            </Button>
-                          )}
                           {(apt.status === 'Pending' || apt.status === 'Confirmed') && (
-                            <Button variant="ghost" size="sm" className="text-blue-600" onClick={() => updateStatus(apt.id, 'Completed')}>
-                              Complete
-                            </Button>
-                          )}
-                          {(apt.status === 'Pending' || apt.status === 'Confirmed') && (
-                            <Button variant="ghost" size="sm" className="text-red-600" onClick={() => updateStatus(apt.id, 'No Show')}>
-                              No Show
-                            </Button>
+                            <div className="flex items-center gap-0.5">
+                              {apt.status === 'Pending' && (
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50" onClick={() => updateStatus(apt.id, 'Confirmed')} title="Confirm">
+                                  <Check className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => setRescheduleId(apt.id)} title="Reschedule">
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50" onClick={() => updateStatus(apt.id, 'No Show')} title="Mark No Show">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:bg-red-50" onClick={() => updateStatus(apt.id, 'Cancelled')} title="Cancel">
+                                <XCircle className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </TableCell>
@@ -424,26 +473,24 @@ export default function AppointmentManagement() {
           <DialogHeader>
             <DialogTitle>
               {selectedAppointment?.is_group_booking
-                ? `Group Booking - Booked by ${selectedAppointment?.patient_name}`
+                ? `${(memberMap.get(selectedAppointment?.id || 0)?.length || 0) === 1 ? 'Companion' : 'Group'} Booking - Booked by ${selectedAppointment?.patient_name}`
                 : `Patient Details - ${selectedAppointment?.patient_name}`}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6">
-            {/* Appointment Info */}
             <div>
               <h3 className="font-semibold text-foreground mb-2">Appointment Information</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-muted-foreground">Date:</span> {selectedAppointment && new Date(selectedAppointment.appointment_date + 'T00:00:00').toLocaleDateString()}</div>
                 <div><span className="text-muted-foreground">Time:</span> {selectedAppointment?.appointment_time}</div>
                 <div><span className="text-muted-foreground">Status:</span> {selectedAppointment?.status}</div>
-                <div><span className="text-muted-foreground">Type:</span> {selectedAppointment?.is_group_booking ? 'Group Booking' : 'Individual'}</div>
+                <div><span className="text-muted-foreground">Type:</span> {selectedAppointment?.is_group_booking ? (groupMembers.length === 1 ? 'Companion Booking' : 'Group Booking') : 'Individual'}</div>
                 {selectedAppointment?.contact && <div><span className="text-muted-foreground">Contact:</span> {selectedAppointment.contact}</div>}
                 {selectedAppointment?.notes && <div className="col-span-2"><span className="text-muted-foreground">Notes:</span> {selectedAppointment.notes}</div>}
               </div>
             </div>
 
-            {/* Individual booking: Show patient profile & medical assessment */}
             {!selectedAppointment?.is_group_booking && patientProfile && (
               <div>
                 <h3 className="font-semibold text-foreground mb-2">Patient Profile</h3>
@@ -467,10 +514,10 @@ export default function AppointmentManagement() {
                 <h3 className="font-semibold text-foreground mb-2">Medical History</h3>
                 <div className="space-y-2 text-sm bg-muted/50 p-3 rounded-lg">
                   <div><span className="text-muted-foreground">Good health?</span> {medicalAssessment.q1 || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Under medical treatment?</span> {medicalAssessment.q2 || 'N/A'} {medicalAssessment.q2_details ? `- ${medicalAssessment.q2_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Maintenance medications?</span> {medicalAssessment.q3 || 'N/A'} {medicalAssessment.q3_details ? `- ${medicalAssessment.q3_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Hospitalized before?</span> {medicalAssessment.q4 || 'N/A'} {medicalAssessment.q4_details ? `- ${medicalAssessment.q4_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Known allergies?</span> {medicalAssessment.q5 || 'N/A'} {medicalAssessment.q5_details ? `- ${medicalAssessment.q5_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Under treatment?</span> {medicalAssessment.q2 || 'N/A'} {medicalAssessment.q2_details ? `- ${medicalAssessment.q2_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Medications?</span> {medicalAssessment.q3 || 'N/A'} {medicalAssessment.q3_details ? `- ${medicalAssessment.q3_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Hospitalized?</span> {medicalAssessment.q4 || 'N/A'} {medicalAssessment.q4_details ? `- ${medicalAssessment.q4_details}` : ''}</div>
+                  <div><span className="text-muted-foreground">Allergies?</span> {medicalAssessment.q5 || 'N/A'} {medicalAssessment.q5_details ? `- ${medicalAssessment.q5_details}` : ''}</div>
                   <div><span className="text-muted-foreground">Pregnant/nursing?</span> {medicalAssessment.q6 || 'N/A'}</div>
                   <div><span className="text-muted-foreground">Last checkup:</span> {medicalAssessment.last_checkup ? new Date(medicalAssessment.last_checkup + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
                   {medicalAssessment.other_medical && <div><span className="text-muted-foreground">Other:</span> {medicalAssessment.other_medical}</div>}
@@ -478,20 +525,17 @@ export default function AppointmentManagement() {
               </div>
             )}
 
-            {/* Group Members with expandable medical history */}
             {selectedAppointment?.is_group_booking && groupMembers.length > 0 && (
               <div>
-                <h3 className="font-semibold text-foreground mb-2">Group Members ({groupMembers.length})</h3>
+                <h3 className="font-semibold text-foreground mb-2">
+                  {groupMembers.length === 1 ? 'Companion' : `Group Members (${groupMembers.length})`}
+                </h3>
                 <div className="space-y-2">
                   {groupMembers.map((member) => {
                     const isExpanded = expandedGroupMember === member.id;
                     return (
                       <div key={member.id} className="bg-muted/50 rounded-lg overflow-hidden border border-border/30">
-                        {/* Member header - clickable to expand */}
-                        <button
-                          className="w-full p-3 flex items-center justify-between hover:bg-muted/80 transition-colors"
-                          onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}
-                        >
+                        <button className="w-full p-3 flex items-center justify-between hover:bg-muted/80 transition-colors" onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}>
                           <div className="text-left">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-foreground">{member.member_name}</span>
@@ -504,37 +548,21 @@ export default function AppointmentManagement() {
                               {member.gender && <span>{member.gender}</span>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                          </div>
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                         </button>
 
-                        {/* Expanded details */}
                         {isExpanded && (
                           <div className="px-3 pb-3 border-t border-border/30 space-y-3">
-                            {/* Personal info */}
                             <div className="grid grid-cols-2 gap-2 text-sm pt-2">
-                              {member.date_of_birth && (
-                                <div><span className="text-muted-foreground">DOB:</span> {new Date(member.date_of_birth + 'T00:00:00').toLocaleDateString()}</div>
-                              )}
+                              {member.date_of_birth && <div><span className="text-muted-foreground">DOB:</span> {new Date(member.date_of_birth + 'T00:00:00').toLocaleDateString()}</div>}
                               {member.phone && <div><span className="text-muted-foreground">Phone:</span> {member.phone}</div>}
                             </div>
-
-                            {/* Medical History */}
                             <div>
                               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Medical History</p>
                               {renderMemberMedical(member)}
                             </div>
-
-                            {/* Upload prescription button */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}
-                            >
-                              <Upload className="h-3 w-3" />
-                              Upload Prescription
+                            <Button variant="outline" size="sm" className="gap-1" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
+                              <Upload className="h-3 w-3" /> Upload Prescription
                             </Button>
                           </div>
                         )}
@@ -545,14 +573,12 @@ export default function AppointmentManagement() {
               </div>
             )}
 
-            {/* Prescriptions */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-foreground">Prescriptions</h3>
                 {selectedAppointment && !selectedAppointment.is_group_booking && (
                   <Button variant="outline" size="sm" className="gap-1" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
-                    <Upload className="h-3 w-3" />
-                    Upload Prescription
+                    <Upload className="h-3 w-3" /> Upload Prescription
                   </Button>
                 )}
               </div>
@@ -561,36 +587,23 @@ export default function AppointmentManagement() {
               ) : (
                 <div className="space-y-2">
                   {prescriptions.map((rx) => {
-                    const memberName = rx.group_member_id
-                      ? groupMembers.find(m => m.id === rx.group_member_id)?.member_name
-                      : undefined;
+                    const memberName = rx.group_member_id ? groupMembers.find(m => m.id === rx.group_member_id)?.member_name : undefined;
                     return (
                       <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <span className="font-medium text-foreground">{rx.prescribed_by}</span>
-                            {memberName && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                (For: {memberName})
-                              </span>
-                            )}
+                            {memberName && <span className="text-xs text-muted-foreground ml-2">(For: {memberName})</span>}
                           </div>
                           <span className="text-muted-foreground text-xs">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
                         </div>
                         {rx.image_url && (
-                          <div
-                            className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors"
-                            onClick={() => setViewingImage(rx.image_url)}
-                          >
+                          <div className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors" onClick={() => setViewingImage(rx.image_url)}>
                             <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-card" />
-                            <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">
-                              Click to view full size
-                            </div>
+                            <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">Click to view full size</div>
                           </div>
                         )}
-                        {!rx.image_url && rx.medications && (
-                          <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>
-                        )}
+                        {!rx.image_url && rx.medications && <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>}
                       </div>
                     );
                   })}
@@ -605,41 +618,24 @@ export default function AppointmentManagement() {
       <Dialog open={showPrescriptionForm} onOpenChange={setShowPrescriptionForm}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Upload Prescription Image
-            </DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5" /> Upload Prescription Image</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {prescriptionTarget.memberName && (
               <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <span className="text-muted-foreground">Patient:</span>{' '}
-                <span className="font-medium text-foreground">{prescriptionTarget.memberName}</span>
+                <span className="text-muted-foreground">Patient:</span> <span className="font-medium text-foreground">{prescriptionTarget.memberName}</span>
               </div>
             )}
-
             <div>
               <Label>Prescribed By</Label>
               <Input value={prescribedBy} onChange={(e) => setPrescribedBy(e.target.value)} placeholder="Doctor name" />
             </div>
-
             <div>
               <Label>Prescription Image *</Label>
-              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the hard copy prescription (RX)</p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-
+              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the prescription (RX)</p>
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
               {!imagePreview ? (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group"
-                >
+                <button onClick={() => fileInputRef.current?.click()} className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group">
                   <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-2 group-hover:text-secondary transition-colors" />
                   <p className="text-sm font-medium text-foreground">Click to select image</p>
                   <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 10MB</p>
@@ -648,39 +644,14 @@ export default function AppointmentManagement() {
                 <div className="relative rounded-lg overflow-hidden border border-border">
                   <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain bg-card" />
                   <div className="absolute top-2 right-2 flex gap-1">
-                    <Button
-                      variant="secondary"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => fileInputRef.current?.click()}
-                      title="Replace image"
-                    >
-                      <Upload className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => {
-                        setSelectedImage(null);
-                        setImagePreview(null);
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                      }}
-                      title="Remove image"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
+                    <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => fileInputRef.current?.click()} title="Replace"><Upload className="h-3 w-3" /></Button>
+                    <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} title="Remove"><X className="h-3 w-3" /></Button>
                   </div>
                 </div>
               )}
             </div>
-
             <Button onClick={submitPrescription} className="w-full gap-2" disabled={uploading || !selectedImage}>
-              {uploading ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
-              ) : (
-                <><Upload className="h-4 w-4" /> Upload Prescription</>
-              )}
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload Prescription</>}
             </Button>
           </div>
         </DialogContent>
@@ -692,28 +663,23 @@ export default function AppointmentManagement() {
           <DialogHeader className="pb-2">
             <DialogTitle className="flex items-center justify-between">
               <span>Prescription Image</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                onClick={() => {
-                  if (viewingImage) {
-                    const w = window.open(viewingImage, '_blank');
-                    if (w) {
-                      w.onload = () => { w.print(); };
-                    }
-                  }
-                }}
-              >
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => { if (viewingImage) { const w = window.open(viewingImage, '_blank'); if (w) w.onload = () => w.print(); } }}>
                 <Printer className="h-3 w-3" /> Print
               </Button>
             </DialogTitle>
           </DialogHeader>
-          {viewingImage && (
-            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-card max-h-[70vh]" />
-          )}
+          {viewingImage && <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-card max-h-[70vh]" />}
         </DialogContent>
       </Dialog>
+
+      {/* Reschedule Dialog (Admin - unlimited, no time check) */}
+      <RescheduleDialog
+        open={!!rescheduleId}
+        onOpenChange={(open) => !open && setRescheduleId(null)}
+        currentDate={rescheduleApt?.appointment_date || ''}
+        currentTime={rescheduleApt?.appointment_time || ''}
+        onReschedule={handleAdminReschedule}
+      />
     </div>
   );
 }

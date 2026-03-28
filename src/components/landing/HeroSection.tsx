@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Shield, Clock, Smartphone } from 'lucide-react';
+import { ArrowRight, Shield, Clock, Smartphone, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { LoginDialog } from '@/components/auth/LoginDialog';
@@ -43,9 +43,8 @@ export function HeroSection() {
                 <Button size="lg" onClick={handleBookClick} className="bg-white text-teal-700 hover:bg-white/90 font-semibold gap-2 shadow-lg">
                   Book Appointment <ArrowRight className="w-4 h-4" />
                 </Button>
-                <Button size="lg" className="bg-white/20 text-white border border-white/40 hover:bg-white/30 font-semibold gap-2 backdrop-blur-sm"
-                  onClick={() => document.getElementById('services')?.scrollIntoView({ behavior: 'smooth' })}>
-                  Learn More
+                <Button size="lg" onClick={handleBookClick} className="bg-white/20 text-white border border-white/40 hover:bg-white/30 font-semibold gap-2 backdrop-blur-sm">
+                  <Users className="w-4 h-4" /> Book for Others
                 </Button>
               </div>
             </div>
@@ -53,6 +52,7 @@ export function HeroSection() {
             <div className="hidden lg:grid grid-cols-1 gap-4 animate-fade-in-up animate-delay-2">
               {[
                 { icon: Clock, title: 'Quick Booking', desc: 'Book in under 2 minutes' },
+                { icon: Users, title: 'Book for Others', desc: 'Schedule for family & friends' },
                 { icon: Shield, title: 'Secure Records', desc: 'Your data is protected' },
                 { icon: Smartphone, title: 'Access Anywhere', desc: 'Works on any device' },
               ].map(({ icon: Icon, title, desc }) => (
@@ -72,6 +72,7 @@ export function HeroSection() {
           <div className="flex lg:hidden gap-3 mt-8 flex-wrap justify-center">
             {[
               { icon: Clock, label: 'Quick Booking' },
+              { icon: Users, label: 'Book for Others' },
               { icon: Shield, label: 'Secure' },
               { icon: Smartphone, label: 'Any Device' },
             ].map(({ icon: Icon, label }) => (

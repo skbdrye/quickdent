@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember } from './types';
+import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember, Notification } from './types';
 import { formatPhoneWithCountry, normalizePhoneForLogin } from './countries';
 import bcryptjs from 'bcryptjs';
 
@@ -106,12 +106,19 @@ export const authAPI = {
         return { success: false, message: 'Invalid credentials' };
       }
 
+      // Check if user is banned
+      if (user.is_banned) {
+        return { success: false, message: 'Your account has been suspended due to repeated no-shows. Please contact the clinic.' };
+      }
+
       const safeUser: User = {
         id: user.id,
         username: user.username,
         phone: user.phone,
         country_code: user.country_code,
         role: user.role as 'user' | 'admin',
+        no_show_count: user.no_show_count || 0,
+        is_banned: user.is_banned || false,
       };
       return { success: true, message: 'Login successful', user: safeUser };
     } catch (error: unknown) {
@@ -342,6 +349,66 @@ export const appointmentsAPI = {
     const { error } = await supabase
       .from('appointments')
       .update(updateData)
+      .eq('id', id);
+    if (error) throw error;
+
+    // Handle no-show tracking
+    if (status === 'No Show') {
+      const { data: apt } = await supabase
+        .from('appointments')
+        .select('user_id')
+        .eq('id', id)
+        .single();
+      if (apt) {
+        // Increment no_show_count on the user
+        const { data: userData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', apt.user_id)
+          .single() as any;
+        const user = userData as any;
+        const currentCount = (user?.no_show_count || 0) + 1;
+        const updates: Record<string, unknown> = { no_show_count: currentCount };
+        if (currentCount >= 3) {
+          updates.is_banned = true;
+        }
+        await supabase.from('users').update(updates as any).eq('id', apt.user_id);
+      }
+    }
+  },
+
+  async reschedule(id: number, newDate: string, newTime: string, isAdmin: boolean = false) {
+    // Fetch the current appointment
+    const { data: apt, error: fetchErr } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', id)
+      .single() as any;
+    if (fetchErr || !apt) throw new Error('Appointment not found');
+    const appointment = apt as any;
+
+    if (!isAdmin) {
+      // Check reschedule count (users get max 1)
+      if ((appointment.reschedule_count || 0) >= 1) {
+        throw new Error('You have already rescheduled this appointment once. No further reschedules are allowed.');
+      }
+      // Check 1-hour limit
+      const aptDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
+      const now = new Date();
+      const hoursUntil = (aptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      if (hoursUntil < 1) {
+        throw new Error('Appointments can only be rescheduled at least 1 hour before the scheduled time.');
+      }
+    }
+
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        appointment_date: newDate,
+        appointment_time: newTime,
+        reschedule_count: (appointment.reschedule_count || 0) + 1,
+        rescheduled_at: new Date().toISOString(),
+      } as any)
       .eq('id', id);
     if (error) throw error;
   },
@@ -678,5 +745,179 @@ export const matchingAPI = {
       return { merged: true, count: matches.length };
     }
     return { merged: false, count: 0 };
+  },
+};
+
+// ========== BAN / NO-SHOW API ==========
+export const banAPI = {
+  async banUser(userId: string) {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_banned: true } as any)
+        .eq('id', userId);
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Failed to ban user:', err);
+    }
+  },
+
+  async unbanUser(userId: string) {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ is_banned: false, no_show_count: 0 } as any)
+        .eq('id', userId);
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Failed to unban user:', err);
+    }
+  },
+
+  async getUserBanStatus(userId: string) {
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single() as any;
+      const user = data as any;
+      return { is_banned: user?.is_banned || false, no_show_count: user?.no_show_count || 0 };
+    } catch (err) {
+      console.warn('Failed to get ban status:', err);
+      return { is_banned: false, no_show_count: 0 };
+    }
+  },
+};
+
+// ========== NOTIFICATIONS API ==========
+export const notificationsAPI = {
+  async fetchByUser(userId: string): Promise<Notification[]> {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) return [];
+      return (data || []) as unknown as Notification[];
+    } catch (err) {
+      console.warn('Failed to fetch notifications:', err);
+      return [];
+    }
+  },
+
+  async markAsRead(id: number) {
+    try {
+      await (supabase as any)
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', id);
+    } catch (err) {
+      console.warn('Failed to mark notification as read:', err);
+    }
+  },
+
+  async markAllAsRead(userId: string) {
+    try {
+      await (supabase as any)
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+    } catch (err) {
+      console.warn('Failed to mark all notifications as read:', err);
+    }
+  },
+
+  async clearAll(userId: string) {
+    try {
+      await (supabase as any)
+        .from('notifications')
+        .delete()
+        .eq('user_id', userId);
+    } catch (err) {
+      console.warn('Failed to clear notifications:', err);
+    }
+  },
+
+  async create(notification: Omit<Notification, 'id' | 'created_at' | 'is_read'>) {
+    try {
+      const { error } = await (supabase as any)
+        .from('notifications')
+        .insert([{ ...notification, is_read: false }]);
+      if (error) console.warn('Failed to create notification:', error);
+    } catch (err) {
+      console.warn('Failed to create notification:', err);
+    }
+  },
+
+  async notifyAdmins(title: string, message: string, type: Notification['type'] = 'new_booking') {
+    try {
+      const { data: admins } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin');
+      if (admins) {
+        for (const admin of admins) {
+          await notificationsAPI.create({
+            user_id: admin.id,
+            title,
+            message,
+            type,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to notify admins:', err);
+    }
+  },
+};
+
+// ========== ONBOARDING API ==========
+export const onboardingAPI = {
+  async isCompleted(userId: string): Promise<boolean> {
+    try {
+      const { data } = await (supabase as any)
+        .from('user_settings')
+        .select('setting_value')
+        .eq('user_id', userId)
+        .eq('setting_key', 'onboarding_completed')
+        .maybeSingle();
+      const result = data as any;
+      return result?.setting_value === true || result?.setting_value === 'true';
+    } catch (err) {
+      console.warn('Failed to check onboarding status:', err);
+      return false;
+    }
+  },
+
+  async markCompleted(userId: string) {
+    try {
+      const { data: existing } = await (supabase as any)
+        .from('user_settings')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('setting_key', 'onboarding_completed')
+        .maybeSingle();
+
+      if (existing) {
+        await (supabase as any)
+          .from('user_settings')
+          .update({ setting_value: true, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      } else {
+        await (supabase as any)
+          .from('user_settings')
+          .insert([{
+            user_id: userId,
+            setting_key: 'onboarding_completed',
+            setting_value: true,
+          }]);
+      }
+    } catch (err) {
+      console.warn('Failed to mark onboarding as completed:', err);
+    }
   },
 };

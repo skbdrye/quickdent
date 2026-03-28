@@ -229,7 +229,8 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
               </div>
               <div>
                 <Label>Mobile Number *</Label>
-                <Input value={localProfile.phone} onChange={e => updateLocalProfile({ phone: e.target.value })} placeholder="Phone" />
+                <Input value={localProfile.phone} readOnly disabled className="bg-muted/50 cursor-not-allowed" />
+                <p className="text-[11px] text-muted-foreground mt-1">Phone can only be changed in Settings</p>
               </div>
             </div>
             <div>

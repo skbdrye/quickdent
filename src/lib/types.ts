@@ -4,6 +4,8 @@ export interface User {
   phone: string;
   country_code: string;
   role: 'user' | 'admin';
+  no_show_count?: number;
+  is_banned?: boolean;
 }
 
 export interface PatientProfile {
@@ -52,6 +54,41 @@ export interface Appointment {
   cancelled_at?: string | null;
   created_at?: string;
   group_members?: GroupMember[];
+  reschedule_count?: number;
+  rescheduled_at?: string | null;
+  original_date?: string | null;
+  original_time?: string | null;
+}
+
+export interface Notification {
+  id: number;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice';
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface AppNotification {
+  id: number;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'appointment_reminder' | 'booking_new' | 'booking_cancelled' | 'booking_rescheduled' | 'no_show_warning' | 'ban_notice' | 'status_change';
+  related_appointment_id?: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface UserBan {
+  id: number;
+  user_id: string;
+  banned_by: string;
+  reason: string;
+  is_active: boolean;
+  created_at: string;
+  expires_at?: string | null;
 }
 
 export interface GroupMember {
@@ -120,6 +157,12 @@ export interface TimeSlot {
 
 export type DashboardPage = 'dashboard' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions';
 export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services' | 'prescriptions';
+
+export function getBookingTypeLabel(isGroupBooking: boolean, memberCount?: number): string {
+  if (!isGroupBooking) return 'Individual';
+  if (memberCount === 1) return 'Companion';
+  return 'Group';
+}
 
 export function calculateAge(dateOfBirth: string): number {
   const today = new Date();

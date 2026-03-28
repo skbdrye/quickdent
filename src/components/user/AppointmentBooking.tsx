@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
+import { notificationsAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -123,6 +124,14 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
         is_group_booking: false,
       });
       toast({ title: 'Booked!', description: 'Your appointment is pending admin approval.' });
+
+      // Notify admins
+      const patientName = profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : user.username;
+      await notificationsAPI.notifyAdmins(
+        'New Appointment',
+        `${patientName} booked an appointment on ${selectedDate} at ${selectedTime}.`,
+        'new_booking'
+      );
       setSelectedDate(null);
       setSelectedTime(null);
       if (onNavigate) onNavigate('dashboard');

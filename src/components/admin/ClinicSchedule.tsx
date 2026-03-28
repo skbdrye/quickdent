@@ -80,13 +80,13 @@ export default function ClinicSchedule() {
     if (existing) {
       const result = await supabase
         .from('clinic_settings')
-        .update({ setting_value: schedule as any, updated_at: new Date().toISOString() })
+        .update({ setting_value: JSON.parse(JSON.stringify(schedule)), updated_at: new Date().toISOString() })
         .eq('setting_key', 'schedule');
       error = result.error;
     } else {
       const result = await supabase
         .from('clinic_settings')
-        .insert([{ setting_key: 'schedule', setting_value: schedule as any }] as any);
+        .insert([{ setting_key: 'schedule', setting_value: JSON.parse(JSON.stringify(schedule)) }]);
       error = result.error;
     }
 

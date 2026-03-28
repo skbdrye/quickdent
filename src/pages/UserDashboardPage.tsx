@@ -1,12 +1,13 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuthStore } from '@/lib/store';
+import { useAuthStore, useNotificationsStore } from '@/lib/store';
 import { UserSidebar } from '@/components/layout/UserSidebar';
 import { UserDashboard } from '@/components/user/UserDashboard';
 import { OnboardingTutorial } from '@/components/user/OnboardingTutorial';
+import { DashboardHeader } from '@/components/layout/DashboardHeader';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import type { DashboardPage } from '@/lib/types';
 
-// Lazy load non-dashboard pages for better performance
 const AppointmentBooking = lazy(() => import('@/components/user/AppointmentBooking').then(m => ({ default: m.AppointmentBooking })));
 const GroupBooking = lazy(() => import('@/components/user/GroupBooking').then(m => ({ default: m.GroupBooking })));
 const PatientProfile = lazy(() => import('@/components/user/PatientProfile').then(m => ({ default: m.PatientProfile })));
@@ -25,10 +26,32 @@ function PageLoader() {
 export default function UserDashboardPage() {
   const { user, isAuthenticated } = useAuthStore();
   const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
+  const { fetchNotifications } = useNotificationsStore();
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchNotifications(user.id);
+      const interval = setInterval(() => fetchNotifications(user.id), 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id, fetchNotifications]);
 
   if (!isAuthenticated || !user || user.role !== 'user') {
     return <Navigate to="/" />;
   }
+
+  const pageTitle = () => {
+    switch (activePage) {
+      case 'dashboard': return 'Dashboard';
+      case 'appointments': return 'Book Appointment';
+      case 'group-booking': return 'Book for Others';
+      case 'services': return 'Services';
+      case 'prescriptions': return 'Prescriptions';
+      case 'profile': return 'Profile';
+      case 'settings': return 'Settings';
+      default: return 'Dashboard';
+    }
+  };
 
   const renderPage = () => {
     switch (activePage) {
@@ -46,7 +69,13 @@ export default function UserDashboardPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <UserSidebar activePage={activePage} onNavigate={setActivePage} />
-      <main className="flex-1 p-4 md:p-6 overflow-auto">{renderPage()}</main>
+      <div className="flex-1 flex flex-col min-h-screen">
+        <DashboardHeader title={pageTitle()} />
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
+          {renderPage()}
+        </main>
+      </div>
+      <MobileBottomNav activePage={activePage} onNavigate={setActivePage} />
       <OnboardingTutorial userId={user.id} />
     </div>
   );

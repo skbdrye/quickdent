@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo } from 'react';
-import { CalendarDays, Clock, ClipboardCheck, X, Users, ArrowRight, Activity } from 'lucide-react';
+import { CalendarDays, Clock, ClipboardCheck, X, Users, ArrowRight, Activity, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore, useAppointmentsStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
+import { notificationsAPI } from '@/lib/api';
 import { statusVariant } from '@/lib/types';
 import type { DashboardPage } from '@/lib/types';
+import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -18,9 +20,10 @@ interface UserDashboardProps {
 
 export function UserDashboard({ onNavigate }: UserDashboardProps) {
   const { user } = useAuthStore();
-  const { appointments, fetchUserAppointments, updateStatus } = useAppointmentsStore();
+  const { appointments, fetchUserAppointments, updateStatus, rescheduleAppointment } = useAppointmentsStore();
   const { toast } = useToast();
   const [cancelId, setCancelId] = useState<number | null>(null);
+  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user?.id) fetchUserAppointments(user.id);
@@ -47,24 +50,57 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
     { icon: Activity, label: 'Completed', value: completed.length, bg: 'bg-violet-50 dark:bg-violet-950/30', color: 'text-violet-600 dark:text-violet-400', ring: 'ring-violet-200 dark:ring-violet-800' },
   ];
 
-  const canCancel = (apt: typeof appointments[0]) => {
+  const canModify = (apt: typeof appointments[0]) => {
     if (apt.status !== 'Pending' && apt.status !== 'Confirmed') return false;
     const aptDate = new Date(apt.appointment_date + 'T' + apt.appointment_time);
     const now = new Date();
     const hoursUntil = (aptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    return hoursUntil >= 24;
+    return hoursUntil >= 1;
+  };
+
+  const canReschedule = (apt: typeof appointments[0]) => {
+    return canModify(apt) && (apt.reschedule_count || 0) < 1;
   };
 
   const handleCancel = async () => {
     if (!cancelId) return;
     try {
       await updateStatus(cancelId, 'Cancelled');
+      // Notify admins
+      const apt = appointments.find(a => a.id === cancelId);
+      if (apt) {
+        await notificationsAPI.notifyAdmins(
+          'Appointment Cancelled',
+          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${apt.appointment_time}.`,
+          'cancellation'
+        );
+      }
       toast({ title: 'Cancelled', description: 'Your appointment has been cancelled.' });
     } catch {
       toast({ title: 'Error', description: 'Failed to cancel appointment.', variant: 'destructive' });
     }
     setCancelId(null);
   };
+
+  const handleReschedule = async (newDate: string, newTime: string) => {
+    if (!rescheduleId) return;
+    try {
+      await rescheduleAppointment(rescheduleId, newDate, newTime, false);
+      // Notify admins
+      await notificationsAPI.notifyAdmins(
+        'Appointment Rescheduled',
+        `${user?.username || 'A patient'} rescheduled their appointment to ${newDate} at ${newTime}.`,
+        'reschedule'
+      );
+      toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
+      throw err; // Re-throw to keep dialog open
+    }
+  };
+
+  const rescheduleApt = rescheduleId ? appointments.find(a => a.id === rescheduleId) : null;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -113,16 +149,21 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium text-sm text-foreground truncate">
-                        {apt.is_group_booking ? 'Group Booking' : 'Dental Appointment'}
+                        {apt.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {apt.appointment_time}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant={statusVariant(apt.status)}>{apt.status}</Badge>
-                    {canCancel(apt) && (
+                    {canReschedule(apt) && (
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-secondary hover:bg-secondary/10" onClick={() => setRescheduleId(apt.id)} title="Reschedule">
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                    {canModify(apt) && (
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10" onClick={() => setCancelId(apt.id)} title="Cancel appointment">
                         <X className="w-3.5 h-3.5" />
                       </Button>
@@ -192,6 +233,14 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RescheduleDialog
+        open={!!rescheduleId}
+        onOpenChange={(open) => !open && setRescheduleId(null)}
+        currentDate={rescheduleApt?.appointment_date || ''}
+        currentTime={rescheduleApt?.appointment_time || ''}
+        onReschedule={handleReschedule}
+      />
     </div>
   );
 }

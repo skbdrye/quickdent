@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
-import { groupMembersAPI } from '@/lib/api';
+import { groupMembersAPI, notificationsAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -180,7 +180,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         appointment_date: selectedDate,
         appointment_time: members[0].appointment_time,
         duration_min: 30 * members.length,
-        notes: `Group: ${members.map(m => m.member_name).join(', ')}`,
+        notes: `Companions: ${members.map(m => m.member_name).join(', ')}`,
         contact: profile?.phone || user.phone,
         status: 'Pending',
         is_group_booking: true,
@@ -191,7 +191,14 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         appointment_id: apt.id,
       })));
 
-      toast({ title: 'Group Booked!', description: `${members.length} member(s) booked. Pending approval.` });
+      toast({ title: 'Booked!', description: `${members.length} member(s) booked. Pending approval.` });
+
+      // Notify admins about new booking
+      await notificationsAPI.notifyAdmins(
+        'New Companion Booking',
+        `${user.username} booked for ${members.length} member(s): ${members.map(m => m.member_name).join(', ')} on ${selectedDate}.`,
+        'new_booking'
+      );
       setMembers([emptyMember()]);
       setIncludeSelf(false);
       setSelectedDate(null);

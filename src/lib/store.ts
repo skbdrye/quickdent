@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI } from './api';
-import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription } from './types';
+import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI, notificationsAPI } from './api';
+import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription, Notification } from './types';
 
 // ========== HELPER FUNCTIONS FOR LOCALSTORAGE ==========
 function loadJSON<T>(key: string, fallback: T): T {
@@ -76,6 +76,7 @@ interface AppointmentsState {
   updateStatus: (id: number, status: Appointment['status']) => Promise<void>;
   deleteAppointment: (id: number) => Promise<void>;
   fetchBookedSlots: (date: string) => Promise<string[]>;
+  rescheduleAppointment: (id: number, newDate: string, newTime: string, isAdmin?: boolean) => Promise<void>;
 }
 
 export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
@@ -124,6 +125,15 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
 
   fetchBookedSlots: async (date: string) => {
     return appointmentsAPI.fetchBookedSlots(date);
+  },
+
+  rescheduleAppointment: async (id: number, newDate: string, newTime: string, isAdmin: boolean = false) => {
+    await appointmentsAPI.reschedule(id, newDate, newTime, isAdmin);
+    set({
+      appointments: get().appointments.map(a =>
+        a.id === id ? { ...a, appointment_date: newDate, appointment_time: newTime, reschedule_count: (a.reschedule_count || 0) + 1 } : a
+      ),
+    });
   },
 }));
 
@@ -310,5 +320,48 @@ export const usePrescriptionsStore = create<PrescriptionsState>((set, get) => ({
       ),
     });
     return url;
+  },
+}));
+
+// ========== NOTIFICATIONS STORE ==========
+interface NotificationsState {
+  notifications: Notification[];
+  unreadCount: number;
+  isLoading: boolean;
+  fetchNotifications: (userId: string) => Promise<void>;
+  markAsRead: (id: number) => void;
+  markAllAsRead: (userId: string) => void;
+  clearAll: (userId: string) => void;
+}
+
+export const useNotificationsStore = create<NotificationsState>((set, get) => ({
+  notifications: [],
+  unreadCount: 0,
+  isLoading: false,
+
+  fetchNotifications: async (userId: string) => {
+    set({ isLoading: true });
+    const notifications = await notificationsAPI.fetchByUser(userId);
+    const unreadCount = notifications.filter(n => !n.is_read).length;
+    set({ notifications, unreadCount, isLoading: false });
+  },
+
+  markAsRead: (id: number) => {
+    notificationsAPI.markAsRead(id);
+    const updated = get().notifications.map(n =>
+      n.id === id ? { ...n, is_read: true } : n
+    );
+    set({ notifications: updated, unreadCount: updated.filter(n => !n.is_read).length });
+  },
+
+  markAllAsRead: (userId: string) => {
+    notificationsAPI.markAllAsRead(userId);
+    const updated = get().notifications.map(n => ({ ...n, is_read: true }));
+    set({ notifications: updated, unreadCount: 0 });
+  },
+
+  clearAll: (userId: string) => {
+    notificationsAPI.clearAll(userId);
+    set({ notifications: [], unreadCount: 0 });
   },
 }));
