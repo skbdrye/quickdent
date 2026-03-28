@@ -1,6 +1,9 @@
 import { defineConfig, PluginOption } from "vite";
-import { enterDevPlugin, enterProdPlugin } from 'vite-plugin-enter-dev';
 import path from "path";
+
+// Stub functions to replace vite-plugin-enter-dev (which has Vite 7 compatibility issues)
+const enterProdPlugin = () => [];
+const enterDevPlugin = () => [];
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
