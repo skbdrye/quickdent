@@ -1,5 +1,9 @@
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useAuthStore } from '@/lib/store';
+import { LogOut } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useNavigate } from 'react-router-dom';
 
 interface DashboardHeaderProps {
   title?: string;
@@ -7,7 +11,13 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ title, onNavigateToAppointment }: DashboardHeaderProps) {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/80 backdrop-blur-md border-b border-border/50 md:pl-6">
@@ -22,7 +32,23 @@ export function DashboardHeader({ title, onNavigateToAppointment }: DashboardHea
         <span className="hidden sm:block text-xs text-muted-foreground mr-1">
           {user?.username}
         </span>
-        <NotificationBell />
+        <NotificationBell onNavigateToAppointment={onNavigateToAppointment} />
+        {/* Mobile logout button (desktop has it in sidebar) */}
+        {user?.role === 'admin' && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Sign Out</TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </header>
   );

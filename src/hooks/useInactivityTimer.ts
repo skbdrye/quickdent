@@ -14,7 +14,6 @@ export function useInactivityTimer(timeoutMinutes?: number, onTimeout?: () => vo
 
   const handleLogout = useCallback(() => {
     if (!isAuthenticated) return;
-    
     if (onTimeout) {
       onTimeout();
     } else {
