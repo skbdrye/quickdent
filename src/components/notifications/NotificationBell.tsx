@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, CheckCheck, Trash2, CalendarDays, CalendarOff, CalendarClock, ShieldAlert, AlertTriangle, Info } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, CalendarDays, CalendarOff, CalendarClock, ShieldAlert, AlertTriangle, Info, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +28,7 @@ function getNotificationIcon(type: string) {
     case 'cancellation': return <CalendarOff className="w-4 h-4 text-red-500" />;
     case 'reschedule': return <CalendarClock className="w-4 h-4 text-blue-500" />;
     case 'reminder': return <CalendarDays className="w-4 h-4 text-secondary" />;
+    case 'appointment_reminder': return <Clock className="w-4 h-4 text-secondary" />;
     case 'no_show_warning': return <AlertTriangle className="w-4 h-4 text-orange-500" />;
     case 'ban_notice': return <ShieldAlert className="w-4 h-4 text-red-500" />;
     case 'status_change': return <Info className="w-4 h-4 text-blue-500" />;
@@ -35,7 +36,11 @@ function getNotificationIcon(type: string) {
   }
 }
 
-export function NotificationBell() {
+interface NotificationBellProps {
+  onNavigateToAppointment?: () => void;
+}
+
+export function NotificationBell({ onNavigateToAppointment }: NotificationBellProps) {
   const { user } = useAuthStore();
   const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, clearAll } = useNotificationsStore();
   const [open, setOpen] = useState(false);
@@ -73,6 +78,15 @@ export function NotificationBell() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
+
+  const handleNotificationClick = (n: Notification) => {
+    if (!n.is_read) markAsRead(n.id);
+    // If this notification has a related appointment, navigate to appointments view
+    if (n.related_appointment_id && onNavigateToAppointment) {
+      onNavigateToAppointment();
+      setOpen(false);
+    }
+  };
 
   return (
     <div className="relative" ref={panelRef}>
@@ -121,9 +135,10 @@ export function NotificationBell() {
                     key={n.id}
                     className={cn(
                       'w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/50 transition-colors',
-                      !n.is_read && 'bg-secondary/5'
+                      !n.is_read && 'bg-secondary/5',
+                      n.related_appointment_id && 'cursor-pointer'
                     )}
-                    onClick={() => { if (!n.is_read) markAsRead(n.id); }}
+                    onClick={() => handleNotificationClick(n)}
                   >
                     <div className="mt-0.5 shrink-0">{getNotificationIcon(n.type)}</div>
                     <div className="flex-1 min-w-0">
@@ -131,7 +146,7 @@ export function NotificationBell() {
                         <p className={cn('text-sm truncate', !n.is_read ? 'font-semibold text-foreground' : 'text-foreground/80')}>{n.title}</p>
                         {!n.is_read && <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 whitespace-pre-line">{n.message}</p>
                       <p className="text-[10px] text-muted-foreground/60 mt-1">{timeAgo(n.created_at)}</p>
                     </div>
                     {!n.is_read && (

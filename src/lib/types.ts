@@ -68,6 +68,7 @@ export interface Notification {
   type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice';
   is_read: boolean;
   created_at: string;
+  related_appointment_id?: number | null;
 }
 
 export interface AppNotification {

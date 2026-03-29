@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAuthStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, UserPlus } from 'lucide-react';
@@ -18,8 +19,10 @@ interface LoginDialogProps {
 }
 
 export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
-  const [loginPhone, setLoginPhone] = useState('');
+  const remembered = localStorage.getItem('qd_remember_user') || '';
+  const [loginPhone, setLoginPhone] = useState(remembered);
   const [loginPassword, setLoginPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(!!remembered);
   const [regUsername, setRegUsername] = useState('');
   const [regCountryCode, setRegCountryCode] = useState('+63');
   const [regPhone, setRegPhone] = useState('');
@@ -27,6 +30,17 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [tab, setTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Refresh remembered user when dialog opens
+  useEffect(() => {
+    if (open) {
+      const saved = localStorage.getItem('qd_remember_user') || '';
+      if (saved) {
+        setLoginPhone(saved);
+        setRememberMe(true);
+      }
+    }
+  }, [open]);
 
   const { login, register } = useAuthStore();
   const navigate = useNavigate();
@@ -42,6 +56,12 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     const result = await login(loginPhone, loginPassword);
     setIsLoading(false);
     if (result.success) {
+      // Save or clear remembered user
+      if (rememberMe) {
+        localStorage.setItem('qd_remember_user', loginPhone);
+      } else {
+        localStorage.removeItem('qd_remember_user');
+      }
       toast({ title: 'Welcome back!', description: result.message });
       onOpenChange(false);
       navigate('/dashboard');
@@ -104,6 +124,16 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
               <div>
                 <Label>Password</Label>
                 <Input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Enter password" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(checked === true)}
+                />
+                <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer select-none">
+                  Remember me
+                </label>
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Logging in...' : 'Login'}

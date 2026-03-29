@@ -213,8 +213,8 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
                 <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value })} placeholder="Middle name" />
               </div>
               <div>
-                <Label>Date of Birth *</Label>
-                <Input type="date" value={localProfile.date_of_birth} onChange={e => updateLocalProfile({ date_of_birth: e.target.value })} />
+                <Label className="text-xs sm:text-sm">Date of Birth *</Label>
+                <Input type="date" value={localProfile.date_of_birth} onChange={e => updateLocalProfile({ date_of_birth: e.target.value })} className="text-sm" />
                 {age !== null && <p className="text-xs text-muted-foreground mt-1">Age: {age} years old</p>}
               </div>
               <div>

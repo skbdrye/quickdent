@@ -5,13 +5,19 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { appointmentsAPI, notificationsAPI } from '@/lib/api';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Appointment {
   id: number;
@@ -114,6 +120,8 @@ export default function AppointmentManagement() {
   const [prescriptionTarget, setPrescriptionTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
   const [expandedGroupMember, setExpandedGroupMember] = useState<number | null>(null);
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
+  const [adminCancelId, setAdminCancelId] = useState<number | null>(null);
+  const [adminCancelReason, setAdminCancelReason] = useState('');
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -436,24 +444,57 @@ export default function AppointmentManagement() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="outline" size="sm" onClick={() => viewDetails(apt)} className="gap-1.5 h-8 text-xs">
-                            <ClipboardList className="h-3.5 w-3.5" /> View Details
+                            <ClipboardList className="h-3.5 w-3.5" /> View
                           </Button>
                           {(apt.status === 'Pending' || apt.status === 'Confirmed') && (
                             <div className="flex items-center gap-0.5">
                               {apt.status === 'Pending' && (
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50" onClick={() => updateStatus(apt.id, 'Confirmed')} title="Confirm">
-                                  <Check className="h-4 w-4" />
-                                </Button>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 px-2 text-emerald-600 hover:bg-emerald-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'Confirmed')}>
+                                      <Check className="h-3.5 w-3.5" />
+                                      <span className="hidden lg:inline">Confirm</span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Confirm Appointment</TooltipContent>
+                                </Tooltip>
                               )}
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => setRescheduleId(apt.id)} title="Reschedule">
-                                <RotateCcw className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50" onClick={() => updateStatus(apt.id, 'No Show')} title="Mark No Show">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:bg-red-50" onClick={() => updateStatus(apt.id, 'Cancelled')} title="Cancel">
-                                <XCircle className="h-3.5 w-3.5" />
-                              </Button>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-violet-600 hover:bg-violet-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'Completed')}>
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span className="hidden lg:inline">Complete</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Mark as Completed</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-blue-600 hover:bg-blue-50 gap-1 text-xs" onClick={() => setRescheduleId(apt.id)}>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    <span className="hidden lg:inline">Reschedule</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Reschedule Appointment</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-orange-600 hover:bg-orange-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'No Show')}>
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                    <span className="hidden lg:inline">No Show</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Mark as No Show</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-red-600 hover:bg-red-50 gap-1 text-xs" onClick={() => setAdminCancelId(apt.id)}>
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    <span className="hidden lg:inline">Cancel</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Cancel Appointment</TooltipContent>
+                              </Tooltip>
                             </div>
                           )}
                         </div>
@@ -671,6 +712,52 @@ export default function AppointmentManagement() {
           {viewingImage && <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-card max-h-[70vh]" />}
         </DialogContent>
       </Dialog>
+
+      {/* Admin Cancel with Reason Dialog */}
+      <AlertDialog open={!!adminCancelId} onOpenChange={(open) => { if (!open) { setAdminCancelId(null); setAdminCancelReason(''); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Appointment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will cancel the appointment and notify the patient.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <Label className="text-sm font-medium">Reason for cancellation *</Label>
+            <Textarea
+              value={adminCancelReason}
+              onChange={(e) => setAdminCancelReason(e.target.value)}
+              placeholder="Please provide a reason for cancelling this appointment..."
+              className="mt-1.5 min-h-[80px]"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setAdminCancelId(null); setAdminCancelReason(''); }}>Keep</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!adminCancelReason.trim()}
+              onClick={async () => {
+                if (!adminCancelId || !adminCancelReason.trim()) return;
+                const apt = appointments.find(a => a.id === adminCancelId);
+                await updateStatus(adminCancelId, 'Cancelled');
+                if (apt) {
+                  await notificationsAPI.create({
+                    user_id: apt.user_id,
+                    title: 'Appointment Cancelled by Clinic',
+                    message: `Your appointment on ${apt.appointment_date} at ${apt.appointment_time} has been cancelled.\n\nReason: ${adminCancelReason.trim()}`,
+                    type: 'cancellation',
+                    related_appointment_id: adminCancelId,
+                  });
+                }
+                setAdminCancelId(null);
+                setAdminCancelReason('');
+              }}
+            >
+              Yes, Cancel
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Reschedule Dialog (Admin - unlimited, no time check) */}
       <RescheduleDialog

@@ -80,11 +80,8 @@ export function OnboardingTutorial({ userId }: { userId: string }) {
           return () => clearTimeout(timer);
         }
       } catch {
-        // If table doesn't exist yet, show the tutorial
-        if (!cancelled) {
-          const timer = setTimeout(() => setIsOpen(true), 800);
-          return () => clearTimeout(timer);
-        }
+        // If DB check fails, do NOT show the tutorial (safe default for old users)
+        // Only new users with a fresh row (setting_value=false) will see it
       }
       if (!cancelled) setChecking(false);
     };

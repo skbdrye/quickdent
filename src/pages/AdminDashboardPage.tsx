@@ -1,10 +1,11 @@
 import { useState, lazy, Suspense, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore, useNotificationsStore } from '@/lib/store';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { AdminMobileBottomNav } from '@/components/layout/AdminMobileBottomNav';
+import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import type { AdminPage } from '@/lib/types';
 
 const AppointmentManagement = lazy(() => import('@/components/admin/AppointmentManagement'));
@@ -22,9 +23,16 @@ function PageLoader() {
 }
 
 export default function AdminDashboardPage() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<AdminPage>('dashboard');
   const { fetchNotifications } = useNotificationsStore();
+  const navigate = useNavigate();
+
+  // Auto-logout after 30 minutes of inactivity for admin
+  useInactivityTimer(30, () => {
+    logout();
+    navigate('/');
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -50,6 +58,10 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleNavigateToAppointment = () => {
+    setActivePage('appointments');
+  };
+
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <AdminDashboard onNavigate={setActivePage} />;
@@ -66,7 +78,7 @@ export default function AdminDashboardPage() {
     <div className="flex min-h-screen bg-background">
       <AdminSidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader title={pageTitle()} />
+        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} />
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
           {renderPage()}
         </main>

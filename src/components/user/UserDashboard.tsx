@@ -1,8 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
-import { CalendarDays, Clock, ClipboardCheck, X, Users, ArrowRight, Activity, RotateCcw } from 'lucide-react';
+import { CalendarDays, Clock, ClipboardCheck, X, Users, ArrowRight, Activity, RotateCcw, Info, AlertTriangle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useAuthStore, useAppointmentsStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
 import { notificationsAPI } from '@/lib/api';
@@ -23,6 +25,7 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
   const { appointments, fetchUserAppointments, updateStatus, rescheduleAppointment } = useAppointmentsStore();
   const { toast } = useToast();
   const [cancelId, setCancelId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -64,15 +67,20 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
 
   const handleCancel = async () => {
     if (!cancelId) return;
+    if (!cancelReason.trim()) {
+      toast({ title: 'Reason required', description: 'Please provide a reason for cancellation.', variant: 'destructive' });
+      return;
+    }
     try {
       await updateStatus(cancelId, 'Cancelled');
-      // Notify admins
+      // Notify admins with reason
       const apt = appointments.find(a => a.id === cancelId);
       if (apt) {
         await notificationsAPI.notifyAdmins(
           'Appointment Cancelled',
-          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${apt.appointment_time}.`,
-          'cancellation'
+          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${apt.appointment_time}.\n\nReason: ${cancelReason.trim()}`,
+          'cancellation',
+          cancelId
         );
       }
       toast({ title: 'Cancelled', description: 'Your appointment has been cancelled.' });
@@ -80,6 +88,7 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
       toast({ title: 'Error', description: 'Failed to cancel appointment.', variant: 'destructive' });
     }
     setCancelId(null);
+    setCancelReason('');
   };
 
   const handleReschedule = async (newDate: string, newTime: string) => {
@@ -90,7 +99,8 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
       await notificationsAPI.notifyAdmins(
         'Appointment Rescheduled',
         `${user?.username || 'A patient'} rescheduled their appointment to ${newDate} at ${newTime}.`,
-        'reschedule'
+        'reschedule',
+        rescheduleId
       );
       toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
     } catch (err: unknown) {
@@ -114,6 +124,34 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
           <CalendarDays className="w-4 h-4" /> Book Appointment
         </Button>
       </div>
+
+      {/* Booking Rules Banner */}
+      <Card className="border-secondary/20 bg-secondary/5">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Info className="w-4 h-4 text-secondary" />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-foreground">Booking Rules</p>
+              <ul className="text-xs text-muted-foreground space-y-1">
+                <li className="flex items-start gap-1.5">
+                  <span className="text-secondary mt-0.5">&#8226;</span>
+                  <span>Cancellations must be made at least <strong className="text-foreground">1 hour</strong> before your appointment.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-secondary mt-0.5">&#8226;</span>
+                  <span>Rescheduling is allowed <strong className="text-foreground">1 time only</strong>, at least 1 hour before the appointment.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-amber-500 mt-0.5"><AlertTriangle className="w-3 h-3" /></span>
+                  <span><strong className="text-foreground">3 no-shows will result in an account ban.</strong> Please cancel in advance if you cannot attend.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -217,7 +255,8 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
         ))}
       </div>
 
-      <AlertDialog open={!!cancelId} onOpenChange={() => setCancelId(null)}>
+      {/* Cancel dialog with reason */}
+      <AlertDialog open={!!cancelId} onOpenChange={(open) => { if (!open) { setCancelId(null); setCancelReason(''); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Appointment?</AlertDialogTitle>
@@ -225,9 +264,22 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
               Are you sure you want to cancel this appointment? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="py-2">
+            <Label className="text-sm font-medium">Reason for cancellation *</Label>
+            <Textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Please provide a reason for cancelling this appointment..."
+              className="mt-1.5 min-h-[80px]"
+            />
+          </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogCancel onClick={() => { setCancelId(null); setCancelReason(''); }}>Keep</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!cancelReason.trim()}
+            >
               Yes, Cancel
             </AlertDialogAction>
           </AlertDialogFooter>

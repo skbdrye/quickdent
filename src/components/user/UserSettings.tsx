@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, Phone, Loader2 } from 'lucide-react';
+import { Lock, Phone, Loader2, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import bcryptjs from 'bcryptjs';
 
 export default function UserSettings() {
   const { toast } = useToast();
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, logout } = useAuthStore();
+  const navigate = useNavigate();
 
   // Extract the local number from the stored phone (remove country code)
   const getLocalNumber = (fullPhone: string, countryCode: string) => {
@@ -221,6 +223,31 @@ export default function UserSettings() {
           <Button onClick={updatePassword} disabled={savingPassword || !passwordHasChanges}>
             {savingPassword ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Update Password'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Logout */}
+      <Card className="border-destructive/30">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-foreground">Sign Out</p>
+              <p className="text-xs text-muted-foreground">Log out from your account on this device</p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                logout();
+                navigate('/');
+                toast({ title: 'Signed out', description: 'You have been logged out successfully.' });
+              }}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

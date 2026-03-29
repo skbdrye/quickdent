@@ -1,11 +1,13 @@
 import { useState, lazy, Suspense, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuthStore, useNotificationsStore } from '@/lib/store';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useAuthStore, useNotificationsStore, useAppointmentsStore } from '@/lib/store';
+import { remindersAPI } from '@/lib/api';
 import { UserSidebar } from '@/components/layout/UserSidebar';
 import { UserDashboard } from '@/components/user/UserDashboard';
 import { OnboardingTutorial } from '@/components/user/OnboardingTutorial';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import type { DashboardPage } from '@/lib/types';
 
 const AppointmentBooking = lazy(() => import('@/components/user/AppointmentBooking').then(m => ({ default: m.AppointmentBooking })));
@@ -24,17 +26,34 @@ function PageLoader() {
 }
 
 export default function UserDashboardPage() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
   const { fetchNotifications } = useNotificationsStore();
+  const { appointments, fetchUserAppointments } = useAppointmentsStore();
+  const navigate = useNavigate();
+
+  // Auto-logout after 15 minutes of inactivity
+  useInactivityTimer(15, () => {
+    logout();
+    navigate('/');
+  });
 
   useEffect(() => {
     if (user?.id) {
       fetchNotifications(user.id);
+      fetchUserAppointments(user.id);
       const interval = setInterval(() => fetchNotifications(user.id), 30000);
       return () => clearInterval(interval);
     }
-  }, [user?.id, fetchNotifications]);
+  }, [user?.id, fetchNotifications, fetchUserAppointments]);
+
+  // Generate appointment reminders (1 day + 2 hours before)
+  // Only for regular users, NOT admins
+  useEffect(() => {
+    if (user?.id && user.role === 'user' && appointments.length > 0) {
+      remindersAPI.generateReminders(user.id, appointments).catch(() => {});
+    }
+  }, [user?.id, user?.role, appointments]);
 
   if (!isAuthenticated || !user || user.role !== 'user') {
     return <Navigate to="/" />;
@@ -51,6 +70,10 @@ export default function UserDashboardPage() {
       case 'settings': return 'Settings';
       default: return 'Dashboard';
     }
+  };
+
+  const handleNavigateToAppointment = () => {
+    setActivePage('appointments');
   };
 
   const renderPage = () => {
@@ -70,7 +93,7 @@ export default function UserDashboardPage() {
     <div className="flex min-h-screen bg-background">
       <UserSidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader title={pageTitle()} />
+        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} />
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
           {renderPage()}
         </main>

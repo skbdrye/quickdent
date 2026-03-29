@@ -51,7 +51,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     const [patientsRes, groupMembersRes, todayRes, pendingRes, completedRes] = await Promise.all([
       supabase.from('patient_profiles').select('id', { count: 'exact', head: true }),
       supabase.from('group_members').select('id', { count: 'exact', head: true }).is('linked_user_id', null),
-      supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('appointment_date', today),
+      supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('appointment_date', today).neq('status', 'Cancelled'),
       supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'Pending'),
       supabase.from('appointments').select('id', { count: 'exact', head: true }).eq('status', 'Completed').eq('appointment_date', today),
     ]);

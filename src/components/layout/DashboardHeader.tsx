@@ -3,9 +3,10 @@ import { useAuthStore } from '@/lib/store';
 
 interface DashboardHeaderProps {
   title?: string;
+  onNavigateToAppointment?: () => void;
 }
 
-export function DashboardHeader({ title }: DashboardHeaderProps) {
+export function DashboardHeader({ title, onNavigateToAppointment }: DashboardHeaderProps) {
   const { user } = useAuthStore();
 
   return (

@@ -234,7 +234,13 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {timeSlots.map(slot => {
                 const booked = bookedSlots.has(slot.value);
-                const unavailable = !slot.available || booked;
+                // Block past time slots if selected date is today
+                const isPastTime = selectedDate === todayStr && (() => {
+                  const [h, m] = slot.value.split(':').map(Number);
+                  const now = new Date();
+                  return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
+                })();
+                const unavailable = !slot.available || booked || isPastTime;
                 const isSelected = slot.value === selectedTime;
                 return (
                   <button key={slot.value} disabled={unavailable} onClick={() => setSelectedTime(slot.value)} className={cn(

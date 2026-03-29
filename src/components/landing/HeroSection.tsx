@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Shield, Clock, Smartphone, Users } from 'lucide-react';
+import { ArrowRight, Shield, Clock, Smartphone, Users, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import { LoginDialog } from '@/components/auth/LoginDialog';
@@ -43,8 +43,8 @@ export function HeroSection() {
                 <Button size="lg" onClick={handleBookClick} className="bg-white text-teal-700 hover:bg-white/90 font-semibold gap-2 shadow-lg">
                   Book Appointment <ArrowRight className="w-4 h-4" />
                 </Button>
-                <Button size="lg" onClick={handleBookClick} className="bg-white/20 text-white border border-white/40 hover:bg-white/30 font-semibold gap-2 backdrop-blur-sm">
-                  <Users className="w-4 h-4" /> Book for Others
+                <Button size="lg" onClick={() => document.querySelector('#about')?.scrollIntoView({ behavior: 'smooth' })} className="bg-white/20 text-white border border-white/40 hover:bg-white/30 font-semibold gap-2 backdrop-blur-sm">
+                  <Info className="w-4 h-4" /> Learn More
                 </Button>
               </div>
             </div>
