@@ -295,7 +295,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">Full Name *</Label>
-                        <Input value={member.member_name} onChange={e => updateMember(i, { member_name: e.target.value })} disabled={isSelf} className="h-9" />
+                        <Input value={member.member_name} onChange={e => updateMember(i, { member_name: e.target.value.slice(0, 30) })} disabled={isSelf} className="h-9" maxLength={30} />
                       </div>
                       <div>
                         <Label className="text-xs">Date of Birth *</Label>

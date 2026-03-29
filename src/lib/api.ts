@@ -61,12 +61,7 @@ export const authAPI = {
         is_submitted: false,
       }]);
 
-      // Create onboarding setting for new user (not completed yet)
-      await (supabase as any).from('user_settings').insert([{
-        user_id: newUser.id,
-        setting_key: 'onboarding_completed',
-        setting_value: false,
-      }]);
+      // onboarding_completed defaults to false in the users table, no extra insert needed
 
 
       // Check if there's a matching group member (name + DOB + gender match)
@@ -128,6 +123,7 @@ export const authAPI = {
         role: user.role as 'user' | 'admin',
         no_show_count: user.no_show_count || 0,
         is_banned: user.is_banned || false,
+        onboarding_completed: user.onboarding_completed || false,
       };
       return { success: true, message: 'Login successful', user: safeUser };
     } catch (error: unknown) {
@@ -888,42 +884,22 @@ export const notificationsAPI = {
 // ========== ONBOARDING API ==========
 export const onboardingAPI = {
   async isCompleted(userId: string): Promise<boolean> {
-    const { data, error } = await (supabase as any)
-      .from('user_settings')
-      .select('setting_value')
-      .eq('user_id', userId)
-      .eq('setting_key', 'onboarding_completed')
+    const { data, error } = await supabase
+      .from('users')
+      .select('onboarding_completed')
+      .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
-    // If no row exists, this is an old user who registered before onboarding was added -> treat as completed
-    if (!data) return true;
-    const result = data as any;
-    return result?.setting_value === true || result?.setting_value === 'true';
+    if (!data) return true; // User not found, treat as completed
+    return data.onboarding_completed === true;
   },
 
   async markCompleted(userId: string) {
     try {
-      const { data: existing } = await (supabase as any)
-        .from('user_settings')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('setting_key', 'onboarding_completed')
-        .maybeSingle();
-
-      if (existing) {
-        await (supabase as any)
-          .from('user_settings')
-          .update({ setting_value: true, updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
-      } else {
-        await (supabase as any)
-          .from('user_settings')
-          .insert([{
-            user_id: userId,
-            setting_key: 'onboarding_completed',
-            setting_value: true,
-          }]);
-      }
+      await supabase
+        .from('users')
+        .update({ onboarding_completed: true } as any)
+        .eq('id', userId);
     } catch (err) {
       console.warn('Failed to mark onboarding as completed:', err);
     }
@@ -940,15 +916,8 @@ export const remindersAPI = {
       const hoursUntil = (aptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
       if (hoursUntil > 0 && hoursUntil <= 24 && hoursUntil > 2) {
-        // 24-hour reminder
         const reminderKey = `reminder_24h_${apt.id}`;
-        const { data: existing } = await (supabase as any)
-          .from('user_settings')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('setting_key', reminderKey)
-          .maybeSingle();
-        if (!existing) {
+        if (!localStorage.getItem(reminderKey)) {
           await notificationsAPI.create({
             user_id: userId,
             title: 'Appointment Tomorrow',
@@ -956,28 +925,21 @@ export const remindersAPI = {
             type: 'reminder',
             related_appointment_id: apt.id,
           });
-          await (supabase as any).from('user_settings').insert([{ user_id: userId, setting_key: reminderKey, setting_value: true }]);
+          localStorage.setItem(reminderKey, 'true');
         }
       }
 
       if (hoursUntil > 0 && hoursUntil <= 2) {
-        // 2-hour reminder
         const reminderKey = `reminder_2h_${apt.id}`;
-        const { data: existing } = await (supabase as any)
-          .from('user_settings')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('setting_key', reminderKey)
-          .maybeSingle();
-        if (!existing) {
+        if (!localStorage.getItem(reminderKey)) {
           await notificationsAPI.create({
             user_id: userId,
             title: 'Appointment Very Soon',
-            message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${apt.appointment_time}. If you need to cancel, please do so at least 1 hour before. You may also reschedule if you haven't already.`,
+            message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${apt.appointment_time}. If you need to cancel, please do so at least 1 hour before.`,
             type: 'reminder',
             related_appointment_id: apt.id,
           });
-          await (supabase as any).from('user_settings').insert([{ user_id: userId, setting_key: reminderKey, setting_value: true }]);
+          localStorage.setItem(reminderKey, 'true');
         }
       }
     }

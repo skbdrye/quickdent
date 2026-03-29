@@ -6,6 +6,7 @@ export interface User {
   role: 'user' | 'admin';
   no_show_count?: number;
   is_banned?: boolean;
+  onboarding_completed?: boolean;
 }
 
 export interface PatientProfile {
@@ -65,7 +66,7 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice';
+  type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice' | 'prescription';
   is_read: boolean;
   created_at: string;
   related_appointment_id?: number | null;

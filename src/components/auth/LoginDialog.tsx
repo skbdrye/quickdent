@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuthStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn, UserPlus } from 'lucide-react';
+import { LogIn, UserPlus, Eye, EyeOff, Check, X } from 'lucide-react';
 import { COUNTRY_CODES } from '@/lib/countries';
 import { Link } from 'react-router-dom';
 
@@ -18,15 +18,43 @@ interface LoginDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Validation helpers
+function validateUsername(val: string) {
+  return {
+    minLength: val.length >= 6,
+    validChars: /^[a-zA-Z0-9_]*$/.test(val),
+  };
+}
+
+function validatePassword(val: string) {
+  return {
+    minLength: val.length >= 8,
+    hasUpper: /[A-Z]/.test(val),
+    hasLower: /[a-z]/.test(val),
+    hasDigit: /\d/.test(val),
+  };
+}
+
+function ValidationItem({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${ok ? 'text-success' : 'text-muted-foreground'}`}>
+      {ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const remembered = localStorage.getItem('qd_remember_user') || '';
   const [loginPhone, setLoginPhone] = useState(remembered);
   const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(!!remembered);
   const [regUsername, setRegUsername] = useState('');
   const [regCountryCode, setRegCountryCode] = useState('+63');
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [tab, setTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
@@ -46,42 +74,62 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Validation state (computed, no API calls)
+  const usernameValid = useMemo(() => validateUsername(regUsername), [regUsername]);
+  const passwordValid = useMemo(() => validatePassword(regPassword), [regPassword]);
+  const isUsernameOk = usernameValid.minLength && usernameValid.validChars;
+  const isPasswordOk = passwordValid.minLength && passwordValid.hasUpper && passwordValid.hasLower && passwordValid.hasDigit;
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginPhone || !loginPassword) {
-      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive', duration: 2500 });
       return;
     }
     setIsLoading(true);
     const result = await login(loginPhone, loginPassword);
     setIsLoading(false);
     if (result.success) {
-      // Save or clear remembered user
       if (rememberMe) {
         localStorage.setItem('qd_remember_user', loginPhone);
       } else {
         localStorage.removeItem('qd_remember_user');
       }
-      toast({ title: 'Welcome back!', description: result.message });
+      // Check if first time login (onboarding not completed)
+      const user = useAuthStore.getState().user;
+      const isFirstTime = user && !user.onboarding_completed;
+      toast({
+        title: isFirstTime ? 'Welcome to QuickDent' : 'Welcome back!',
+        description: result.message,
+        duration: 2500,
+      });
       onOpenChange(false);
       navigate('/dashboard');
     } else {
-      toast({ title: 'Login failed', description: result.message, variant: 'destructive' });
+      toast({ title: 'Login failed', description: result.message, variant: 'destructive', duration: 2500 });
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regUsername || !regPhone || !regPassword || !regCountryCode) {
-      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive', duration: 2500 });
+      return;
+    }
+    if (!isUsernameOk) {
+      toast({ title: 'Error', description: 'Username does not meet the requirements', variant: 'destructive', duration: 2500 });
+      return;
+    }
+    if (!isPasswordOk) {
+      toast({ title: 'Error', description: 'Password does not meet the requirements', variant: 'destructive', duration: 2500 });
       return;
     }
     if (!/^\d{7,15}$/.test(regPhone.replace(/\s/g, ''))) {
-      toast({ title: 'Error', description: 'Please enter a valid phone number', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Please enter a valid phone number', variant: 'destructive', duration: 2500 });
       return;
     }
     if (!agreeTerms) {
-      toast({ title: 'Error', description: 'You must agree to the Terms & Conditions', variant: 'destructive' });
+      toast({ title: 'Error', description: 'You must agree to the Terms & Conditions', variant: 'destructive', duration: 2500 });
       return;
     }
 
@@ -89,20 +137,27 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     const result = await register(regUsername, regPhone, regCountryCode, regPassword);
     setIsLoading(false);
     if (result.success) {
-      toast({ title: 'Success', description: result.message });
+      toast({ title: 'Success', description: result.message, duration: 2500 });
       setTab('login');
       setRegUsername('');
       setRegPhone('');
       setRegPassword('');
       setAgreeTerms(false);
     } else {
-      toast({ title: 'Registration failed', description: result.message, variant: 'destructive' });
+      toast({ title: 'Registration failed', description: result.message, variant: 'destructive', duration: 2500 });
     }
+  };
+
+  // Username input handler - filter out disallowed special chars
+  const handleUsernameChange = (val: string) => {
+    // Only allow letters, digits, underscore
+    const filtered = val.replace(/[^a-zA-Z0-9_]/g, '');
+    setRegUsername(filtered);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader className="text-center items-center">
           <div className="mx-auto w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg mb-2">Q</div>
           <DialogTitle>QuickDent</DialogTitle>
@@ -123,7 +178,23 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
               </div>
               <div>
                 <Label>Password</Label>
-                <Input type="password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder="Enter password" />
+                <div className="relative">
+                  <Input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -149,7 +220,18 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
             <form onSubmit={handleRegister} className="space-y-3 mt-4">
               <div>
                 <Label>Username</Label>
-                <Input value={regUsername} onChange={e => setRegUsername(e.target.value)} placeholder="Choose a username" />
+                <Input
+                  value={regUsername}
+                  onChange={e => handleUsernameChange(e.target.value)}
+                  placeholder="Choose a username"
+                  maxLength={30}
+                />
+                {regUsername.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    <ValidationItem ok={usernameValid.minLength} label="At least 6 characters" />
+                    <ValidationItem ok={usernameValid.validChars} label="Letters, numbers, and underscore only" />
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Country</Label>
@@ -167,7 +249,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
               <div>
                 <Label>Mobile Number</Label>
                 <div className="flex gap-2">
-                  <div className="flex items-center px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground min-w-[60px] justify-center">
+                  <div className="flex items-center px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground min-w-[60px] justify-center shrink-0">
                     {regCountryCode}
                   </div>
                   <Input
@@ -175,13 +257,37 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                     onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="Phone number"
                     maxLength={15}
-                    className="flex-1"
+                    className="flex-1 min-w-0"
                   />
                 </div>
               </div>
               <div>
                 <Label>Password</Label>
-                <Input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} placeholder="Create a password" />
+                <div className="relative">
+                  <Input
+                    type={showRegPassword ? 'text' : 'password'}
+                    value={regPassword}
+                    onChange={e => setRegPassword(e.target.value)}
+                    placeholder="Create a password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {regPassword.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    <ValidationItem ok={passwordValid.minLength} label="At least 8 characters" />
+                    <ValidationItem ok={passwordValid.hasUpper} label="At least 1 uppercase letter" />
+                    <ValidationItem ok={passwordValid.hasLower} label="At least 1 lowercase letter" />
+                    <ValidationItem ok={passwordValid.hasDigit} label="At least 1 digit" />
+                  </div>
+                )}
               </div>
               <div className="flex items-start gap-2">
                 <input type="checkbox" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} className="mt-1 accent-primary" />
@@ -192,7 +298,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   <Link to="/privacy" className="text-secondary hover:underline" target="_blank">Privacy Policy</Link>
                 </span>
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading || (regUsername.length > 0 && !isUsernameOk) || (regPassword.length > 0 && !isPasswordOk)}>
                 {isLoading ? 'Registering...' : 'Register'}
               </Button>
               <p className="text-center text-sm text-muted-foreground">

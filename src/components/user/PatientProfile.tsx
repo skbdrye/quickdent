@@ -8,6 +8,7 @@ import { useProfileStore, useAuthStore } from '@/lib/store';
 import { matchingAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { User, FileText, ChevronRight, ChevronLeft, Save, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { calculateAge } from '@/lib/types';
 import type { DashboardPage } from '@/lib/types';
@@ -169,7 +170,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
   const age = localProfile.date_of_birth ? calculateAge(localProfile.date_of_birth) : null;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full max-w-2xl overflow-hidden">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Patient Profile</h1>
         <p className="text-sm text-muted-foreground">Manage your personal and medical information</p>
@@ -202,15 +203,15 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Last Name *</Label>
-                <Input value={localProfile.last_name} onChange={e => updateLocalProfile({ last_name: e.target.value })} placeholder="Last name" />
+                <Input value={localProfile.last_name} onChange={e => updateLocalProfile({ last_name: e.target.value.slice(0, 30) })} placeholder="Last name" maxLength={30} className="w-full truncate" />
               </div>
               <div>
                 <Label>First Name *</Label>
-                <Input value={localProfile.first_name} onChange={e => updateLocalProfile({ first_name: e.target.value })} placeholder="First name" />
+                <Input value={localProfile.first_name} onChange={e => updateLocalProfile({ first_name: e.target.value.slice(0, 30) })} placeholder="First name" maxLength={30} className="w-full truncate" />
               </div>
               <div>
                 <Label>Middle Name</Label>
-                <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value })} placeholder="Middle name" />
+                <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value.slice(0, 30) })} placeholder="Middle name" maxLength={30} className="w-full truncate" />
               </div>
               <div>
                 <Label className="text-xs sm:text-sm">Date of Birth *</Label>
@@ -235,7 +236,14 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
             </div>
             <div>
               <Label>Home Address</Label>
-              <Input value={localProfile.address} onChange={e => updateLocalProfile({ address: e.target.value })} placeholder="Address" />
+              <Textarea
+                value={localProfile.address}
+                onChange={e => updateLocalProfile({ address: e.target.value.slice(0, 150) })}
+                placeholder="Enter your complete home address (Street, Barangay, City, Province)"
+                maxLength={150}
+                className="resize-none h-20 w-full"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">{localProfile.address.length}/150 characters</p>
             </div>
             <Button onClick={handleSaveInfo} className="w-full gap-2" disabled={isSaving}>
               {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <>Continue to Medical History <ChevronRight className="w-4 h-4" /></>}

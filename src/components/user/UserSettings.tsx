@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, Phone, Loader2, LogOut } from 'lucide-react';
+import { Lock, Phone, Loader2, LogOut, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import bcryptjs from 'bcryptjs';
 
@@ -15,12 +15,10 @@ export default function UserSettings() {
   const { user, setUser, logout } = useAuthStore();
   const navigate = useNavigate();
 
-  // Extract the local number from the stored phone (remove country code)
   const getLocalNumber = (fullPhone: string, countryCode: string) => {
     if (fullPhone.startsWith(countryCode)) {
       return fullPhone.substring(countryCode.length);
     }
-    // If starts with 0, remove it (PH format: 09... -> 9...)
     if (fullPhone.startsWith('0')) {
       return fullPhone.substring(1);
     }
@@ -36,34 +34,41 @@ export default function UserSettings() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPhone, setSavingPhone] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
 
-  // Detect if phone has changed
   const phoneHasChanged = useMemo(() => {
     return localNumber !== originalLocalNumber;
   }, [localNumber, originalLocalNumber]);
 
-  // Detect if password fields have content
   const passwordHasChanges = useMemo(() => {
     return currentPassword.length > 0 && newPassword.length > 0 && confirmPassword.length > 0;
   }, [currentPassword, newPassword, confirmPassword]);
 
-  // PH max is 10 digits (without the country code), e.g. 9668810738
   const maxDigits = countryCode === '+63' ? 10 : 15;
 
   const handlePhoneInput = (value: string) => {
-    // Only allow digits
     const digits = value.replace(/\D/g, '');
-    // Enforce max length
     if (digits.length <= maxDigits) {
       setLocalNumber(digits);
     }
   };
 
+  // Password validation
+  const pwChecks = useMemo(() => ({
+    length: newPassword.length >= 8,
+    upper: /[A-Z]/.test(newPassword),
+    lower: /[a-z]/.test(newPassword),
+    digit: /\d/.test(newPassword),
+  }), [newPassword]);
+
+  const pwValid = pwChecks.length && pwChecks.upper && pwChecks.lower && pwChecks.digit;
+
   async function updatePhone() {
     if (!user || !localNumber.trim()) return;
     if (!phoneHasChanged) return;
 
-    // Validate length for PH
     if (countryCode === '+63' && localNumber.length !== 10) {
       toast({ title: 'Error', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive' });
       return;
@@ -72,7 +77,6 @@ export default function UserSettings() {
     setSavingPhone(true);
     const fullPhone = `${countryCode}${localNumber}`;
 
-    // Check if phone already exists
     const { data: existing } = await supabase
       .from('users')
       .select('id')
@@ -95,7 +99,6 @@ export default function UserSettings() {
       toast({ title: 'Error', description: 'Failed to update phone', variant: 'destructive' });
     } else {
       setUser({ ...user, phone: fullPhone });
-      // Also update patient profile phone
       await supabase
         .from('patient_profiles')
         .update({ phone: fullPhone })
@@ -113,14 +116,13 @@ export default function UserSettings() {
       toast({ title: 'Error', description: 'Passwords do not match', variant: 'destructive' });
       return;
     }
-    if (newPassword.length < 6) {
-      toast({ title: 'Error', description: 'Password must be at least 6 characters', variant: 'destructive' });
+    if (!pwValid) {
+      toast({ title: 'Error', description: 'Password does not meet requirements', variant: 'destructive' });
       return;
     }
 
     setSavingPassword(true);
 
-    // Verify current password using bcrypt
     const { data: userData } = await supabase
       .from('users')
       .select('password_hash')
@@ -140,7 +142,6 @@ export default function UserSettings() {
       return;
     }
 
-    // Hash the new password before storing
     const hashedNewPassword = await bcryptjs.hash(newPassword, 10);
 
     const { error } = await supabase
@@ -210,17 +211,49 @@ export default function UserSettings() {
         <CardContent className="space-y-4">
           <div>
             <Label>Current Password</Label>
-            <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" />
+            <div className="relative">
+              <Input type={showCurrentPw ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" className="pr-10" />
+              <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
+                {showCurrentPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <div>
             <Label>New Password</Label>
-            <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password (min 6 chars)" />
+            <div className="relative">
+              <Input type={showNewPw ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password" className="pr-10" />
+              <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
+                {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {newPassword.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {[
+                  { check: pwChecks.length, label: 'At least 8 characters' },
+                  { check: pwChecks.upper, label: 'At least 1 uppercase letter' },
+                  { check: pwChecks.lower, label: 'At least 1 lowercase letter' },
+                  { check: pwChecks.digit, label: 'At least 1 digit' },
+                ].map(({ check, label }) => (
+                  <p key={label} className={`text-xs ${check ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                    {check ? '\u2713' : '\u2022'} {label}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <Label>Confirm New Password</Label>
-            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" />
+            <div className="relative">
+              <Input type={showConfirmPw ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="pr-10" />
+              <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
+                {showConfirmPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {confirmPassword.length > 0 && newPassword !== confirmPassword && (
+              <p className="text-xs text-destructive mt-1">Passwords do not match</p>
+            )}
           </div>
-          <Button onClick={updatePassword} disabled={savingPassword || !passwordHasChanges}>
+          <Button onClick={updatePassword} disabled={savingPassword || !passwordHasChanges || !pwValid}>
             {savingPassword ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Update Password'}
           </Button>
         </CardContent>

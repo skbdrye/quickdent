@@ -25,7 +25,11 @@ export type Database = {
           id: number
           is_group_booking: boolean | null
           notes: string | null
+          original_date: string | null
+          original_time: string | null
           patient_name: string
+          reschedule_count: number | null
+          rescheduled_at: string | null
           status: string | null
           user_id: string
         }
@@ -39,7 +43,11 @@ export type Database = {
           id?: never
           is_group_booking?: boolean | null
           notes?: string | null
+          original_date?: string | null
+          original_time?: string | null
           patient_name: string
+          reschedule_count?: number | null
+          rescheduled_at?: string | null
           status?: string | null
           user_id: string
         }
@@ -53,7 +61,11 @@ export type Database = {
           id?: never
           is_group_booking?: boolean | null
           notes?: string | null
+          original_date?: string | null
+          original_time?: string | null
           patient_name?: string
+          reschedule_count?: number | null
+          rescheduled_at?: string | null
           status?: string | null
           user_id?: string
         }
@@ -258,6 +270,54 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          created_at: string | null
+          id: number
+          is_read: boolean | null
+          message: string
+          related_appointment_id: number | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: never
+          is_read?: boolean | null
+          message: string
+          related_appointment_id?: number | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: never
+          is_read?: boolean | null
+          message?: string
+          related_appointment_id?: number | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_related_appointment_id_fkey"
+            columns: ["related_appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patient_profiles: {
         Row: {
           address: string | null
@@ -401,9 +461,14 @@ export type Database = {
       }
       users: {
         Row: {
+          ban_reason: string | null
+          banned_at: string | null
           country_code: string
           created_at: string | null
           id: string
+          is_banned: boolean | null
+          no_show_count: number | null
+          onboarding_completed: boolean | null
           password_hash: string
           phone: string
           role: string
@@ -411,9 +476,14 @@ export type Database = {
           username: string
         }
         Insert: {
+          ban_reason?: string | null
+          banned_at?: string | null
           country_code?: string
           created_at?: string | null
           id?: string
+          is_banned?: boolean | null
+          no_show_count?: number | null
+          onboarding_completed?: boolean | null
           password_hash: string
           phone: string
           role?: string
@@ -421,9 +491,14 @@ export type Database = {
           username: string
         }
         Update: {
+          ban_reason?: string | null
+          banned_at?: string | null
           country_code?: string
           created_at?: string | null
           id?: string
+          is_banned?: boolean | null
+          no_show_count?: number | null
+          onboarding_completed?: boolean | null
           password_hash?: string
           phone?: string
           role?: string

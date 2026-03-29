@@ -172,11 +172,11 @@ export default function AdminPrescriptions() {
                       </TableCell>
                       <TableCell>
                         {rx.image_url ? (
-                          <Button variant="ghost" size="sm" onClick={() => setViewingImage(rx.image_url)} title="View">
-                            <Eye className="h-4 w-4" />
+                          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setViewingImage(rx.image_url)}>
+                            <Eye className="h-3.5 w-3.5" /> View
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
+                          <span className="text-xs text-muted-foreground">No image</span>
                         )}
                       </TableCell>
                     </TableRow>

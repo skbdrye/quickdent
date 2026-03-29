@@ -186,6 +186,7 @@ export default function AppointmentManagement() {
         title: `Appointment ${status}`,
         message: `Your appointment on ${apt.appointment_date} at ${apt.appointment_time} has been marked as ${status}.`,
         type: status === 'Confirmed' ? 'reminder' : status === 'No Show' ? 'no_show_warning' : 'status_change',
+        related_appointment_id: id,
       });
     }
 
@@ -204,6 +205,7 @@ export default function AppointmentManagement() {
           title: 'Appointment Rescheduled',
           message: `Your appointment has been rescheduled to ${newDate} at ${newTime} by the clinic.`,
           type: 'reschedule',
+          related_appointment_id: rescheduleId,
         });
       }
       toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
@@ -280,6 +282,15 @@ export default function AppointmentManagement() {
       const { error: rxError } = await supabase.from('prescriptions').insert(insertData).select().single();
       if (rxError) throw new Error('Failed to create prescription record');
 
+      // Notify the patient about the new prescription
+      await notificationsAPI.create({
+        user_id: prescriptionTarget.userId,
+        title: 'New Prescription Available',
+        message: `A prescription has been uploaded${prescriptionTarget.memberName ? ` for ${prescriptionTarget.memberName}` : ''}. View it in your Prescriptions tab.`,
+        type: 'prescription',
+        related_appointment_id: prescriptionTarget.appointmentId,
+      });
+
       toast({ title: 'Success', description: 'Prescription saved successfully' });
 
       const { data: updatedRx } = await supabase.from('prescriptions').select('*').eq('appointment_id', prescriptionTarget.appointmentId).order('prescription_date', { ascending: false });
@@ -325,13 +336,15 @@ export default function AppointmentManagement() {
     return `Group (${members?.length || 0})`;
   }
 
+  const statusOrder: Record<string, number> = { 'Pending': 0, 'Confirmed': 1, 'Completed': 2, 'Cancelled': 3, 'No Show': 4 };
+
   const filteredAppointments = appointments.filter((apt) => {
     const displayName = getDisplayName(apt);
     const matchesSearch = displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }).sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
 
   function getStatusVariant(status: string) {
     switch (status) {
@@ -442,60 +455,32 @@ export default function AppointmentManagement() {
                         <Badge variant={getStatusVariant(apt.status) as "pending" | "confirmed" | "completed" | "cancelled" | "noshow"}>{apt.status}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1">
                           <Button variant="outline" size="sm" onClick={() => viewDetails(apt)} className="gap-1.5 h-8 text-xs">
                             <ClipboardList className="h-3.5 w-3.5" /> View
                           </Button>
+                          {apt.status === 'Pending' && (
+                            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300" onClick={() => updateStatus(apt.id, 'Confirmed')}>
+                              <Check className="h-3.5 w-3.5" /> Confirm
+                            </Button>
+                          )}
+                          {apt.status === 'Confirmed' && (
+                            <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-violet-600 border-violet-200 hover:bg-violet-50 hover:border-violet-300" onClick={() => updateStatus(apt.id, 'Completed')}>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Complete
+                            </Button>
+                          )}
                           {(apt.status === 'Pending' || apt.status === 'Confirmed') && (
-                            <div className="flex items-center gap-0.5">
-                              {apt.status === 'Pending' && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-8 px-2 text-emerald-600 hover:bg-emerald-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'Confirmed')}>
-                                      <Check className="h-3.5 w-3.5" />
-                                      <span className="hidden lg:inline">Confirm</span>
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Confirm Appointment</TooltipContent>
-                                </Tooltip>
-                              )}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-violet-600 hover:bg-violet-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'Completed')}>
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    <span className="hidden lg:inline">Complete</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Mark as Completed</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-blue-600 hover:bg-blue-50 gap-1 text-xs" onClick={() => setRescheduleId(apt.id)}>
-                                    <RotateCcw className="h-3.5 w-3.5" />
-                                    <span className="hidden lg:inline">Reschedule</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Reschedule Appointment</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-orange-600 hover:bg-orange-50 gap-1 text-xs" onClick={() => updateStatus(apt.id, 'No Show')}>
-                                    <AlertTriangle className="h-3.5 w-3.5" />
-                                    <span className="hidden lg:inline">No Show</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Mark as No Show</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 px-2 text-red-600 hover:bg-red-50 gap-1 text-xs" onClick={() => setAdminCancelId(apt.id)}>
-                                    <XCircle className="h-3.5 w-3.5" />
-                                    <span className="hidden lg:inline">Cancel</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Cancel Appointment</TooltipContent>
-                              </Tooltip>
-                            </div>
+                            <>
+                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300" onClick={() => setRescheduleId(apt.id)}>
+                                <RotateCcw className="h-3.5 w-3.5" /> Reschedule
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300" onClick={() => updateStatus(apt.id, 'No Show')}>
+                                <AlertTriangle className="h-3.5 w-3.5" /> No Show
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300" onClick={() => setAdminCancelId(apt.id)}>
+                                <XCircle className="h-3.5 w-3.5" /> Cancel
+                              </Button>
+                            </>
                           )}
                         </div>
                       </TableCell>
@@ -602,9 +587,11 @@ export default function AppointmentManagement() {
                               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Medical History</p>
                               {renderMemberMedical(member)}
                             </div>
-                            <Button variant="outline" size="sm" className="gap-1" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
-                              <Upload className="h-3 w-3" /> Upload Prescription
-                            </Button>
+                            {selectedAppointment?.status === 'Confirmed' && (
+                              <Button variant="outline" size="sm" className="gap-1" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
+                                <Upload className="h-3 w-3" /> Upload Prescription
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -617,7 +604,7 @@ export default function AppointmentManagement() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-foreground">Prescriptions</h3>
-                {selectedAppointment && !selectedAppointment.is_group_booking && (
+                {selectedAppointment && !selectedAppointment.is_group_booking && selectedAppointment.status === 'Confirmed' && (
                   <Button variant="outline" size="sm" className="gap-1" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
                     <Upload className="h-3 w-3" /> Upload Prescription
                   </Button>

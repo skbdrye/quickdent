@@ -217,10 +217,10 @@ export default function PatientList() {
                             <div className="flex items-center gap-2">
                               {patient.first_name} {patient.middle_name || ''} {patient.last_name}
                               {patient.banData?.is_banned && (
-                                <Badge variant="banned" className="text-[10px]">Banned</Badge>
+                                <Badge variant="destructive" className="text-[10px]">Banned</Badge>
                               )}
                               {patient.banData && patient.banData.no_show_count >= 2 && !patient.banData.is_banned && (
-                                <Badge variant="warning" className="text-[10px] gap-0.5">
+                                <Badge variant="secondary" className="text-[10px] gap-0.5">
                                   <AlertTriangle className="w-3 h-3" /> {patient.banData.no_show_count} no-shows
                                 </Badge>
                               )}

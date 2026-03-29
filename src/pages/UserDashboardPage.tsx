@@ -76,6 +76,10 @@ export default function UserDashboardPage() {
     setActivePage('appointments');
   };
 
+  const handleNavigateToPrescriptions = () => {
+    setActivePage('prescriptions');
+  };
+
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <UserDashboard onNavigate={setActivePage} />;
@@ -93,7 +97,7 @@ export default function UserDashboardPage() {
     <div className="flex min-h-screen bg-background">
       <UserSidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} />
+        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} onNavigateToPrescriptions={handleNavigateToPrescriptions} />
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
           {renderPage()}
         </main>
