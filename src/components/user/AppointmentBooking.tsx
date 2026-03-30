@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ClinicScheduleDay, DashboardPage } from '@/lib/types';
+import { SuccessModal } from '@/components/shared/SuccessModal';
 
 function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
   const slots: { label: string; value: string; available: boolean }[] = [];
@@ -59,6 +60,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; date: string; time: string }>({ open: false, date: '', time: '' });
 
   useEffect(() => {
     if (user?.id) {
@@ -132,9 +134,11 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
         `${patientName} booked an appointment on ${selectedDate} at ${selectedTime}.`,
         'new_booking'
       );
+      const bookedDate = selectedDate;
+      const bookedTime = selectedTime;
       setSelectedDate(null);
       setSelectedTime(null);
-      if (onNavigate) onNavigate('dashboard');
+      setSuccessModal({ open: true, date: bookedDate, time: bookedTime });
     } catch {
       toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
     }
@@ -261,6 +265,16 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       <Button onClick={handleBook} className="w-full" size="lg" disabled={!selectedDate || !selectedTime || isSubmitting}>
         {isSubmitting ? 'Booking...' : 'Book Appointment'}
       </Button>
+
+      <SuccessModal
+        open={successModal.open}
+        title="Appointment Booked!"
+        description={`Your appointment on ${successModal.date ? new Date(successModal.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''} at ${successModal.time} is pending admin approval.`}
+        onClose={() => {
+          setSuccessModal({ open: false, date: '', time: '' });
+          if (onNavigate) onNavigate('dashboard');
+        }}
+      />
     </div>
   );
 }

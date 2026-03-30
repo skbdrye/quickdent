@@ -1,32 +1,20 @@
-import { useEffect, useState, useMemo } from 'react';
-import { CalendarDays, Clock, ClipboardCheck, X, Users, ArrowRight, Activity, RotateCcw, Info, AlertTriangle } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { useAuthStore, useAppointmentsStore } from '@/lib/store';
-import { useToast } from '@/hooks/use-toast';
-import { notificationsAPI } from '@/lib/api';
 import { statusVariant } from '@/lib/types';
 import type { DashboardPage } from '@/lib/types';
-import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 
 interface UserDashboardProps {
   onNavigate: (page: DashboardPage) => void;
+  onViewAppointment?: (appointmentId?: number) => void;
 }
 
-export function UserDashboard({ onNavigate }: UserDashboardProps) {
+export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardProps) {
   const { user } = useAuthStore();
-  const { appointments, fetchUserAppointments, updateStatus, rescheduleAppointment } = useAppointmentsStore();
-  const { toast } = useToast();
-  const [cancelId, setCancelId] = useState<number | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
+  const { appointments, fetchUserAppointments } = useAppointmentsStore();
 
   useEffect(() => {
     if (user?.id) fetchUserAppointments(user.id);
@@ -52,65 +40,6 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
     { icon: ClipboardCheck, label: 'Confirmed', value: confirmed.length, bg: 'bg-emerald-50 dark:bg-emerald-950/30', color: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-200 dark:ring-emerald-800' },
     { icon: Activity, label: 'Completed', value: completed.length, bg: 'bg-violet-50 dark:bg-violet-950/30', color: 'text-violet-600 dark:text-violet-400', ring: 'ring-violet-200 dark:ring-violet-800' },
   ];
-
-  const canModify = (apt: typeof appointments[0]) => {
-    if (apt.status !== 'Pending' && apt.status !== 'Confirmed') return false;
-    const aptDate = new Date(apt.appointment_date + 'T' + apt.appointment_time);
-    const now = new Date();
-    const hoursUntil = (aptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    return hoursUntil >= 1;
-  };
-
-  const canReschedule = (apt: typeof appointments[0]) => {
-    return canModify(apt) && (apt.reschedule_count || 0) < 1;
-  };
-
-  const handleCancel = async () => {
-    if (!cancelId) return;
-    if (!cancelReason.trim()) {
-      toast({ title: 'Reason required', description: 'Please provide a reason for cancellation.', variant: 'destructive' });
-      return;
-    }
-    try {
-      await updateStatus(cancelId, 'Cancelled');
-      // Notify admins with reason
-      const apt = appointments.find(a => a.id === cancelId);
-      if (apt) {
-        await notificationsAPI.notifyAdmins(
-          'Appointment Cancelled',
-          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${apt.appointment_time}.\n\nReason: ${cancelReason.trim()}`,
-          'cancellation',
-          cancelId
-        );
-      }
-      toast({ title: 'Cancelled', description: 'Your appointment has been cancelled.' });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to cancel appointment.', variant: 'destructive' });
-    }
-    setCancelId(null);
-    setCancelReason('');
-  };
-
-  const handleReschedule = async (newDate: string, newTime: string) => {
-    if (!rescheduleId) return;
-    try {
-      await rescheduleAppointment(rescheduleId, newDate, newTime, false);
-      // Notify admins
-      await notificationsAPI.notifyAdmins(
-        'Appointment Rescheduled',
-        `${user?.username || 'A patient'} rescheduled their appointment to ${newDate} at ${newTime}.`,
-        'reschedule',
-        rescheduleId
-      );
-      toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
-      toast({ title: 'Error', description: msg, variant: 'destructive' });
-      throw err; // Re-throw to keep dialog open
-    }
-  };
-
-  const rescheduleApt = rescheduleId ? appointments.find(a => a.id === rescheduleId) : null;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -170,7 +99,7 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
         ))}
       </div>
 
-      {/* Upcoming appointments */}
+      {/* Upcoming appointments (VIEW ONLY - click to navigate) */}
       {upcoming.length > 0 ? (
         <Card className="border-border/50">
           <CardContent className="p-5">
@@ -180,9 +109,13 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
             </div>
             <div className="space-y-2.5">
               {upcoming.slice(0, 5).map(apt => (
-                <div key={apt.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/30 hover:bg-muted/60 transition-colors">
+                <button
+                  key={apt.id}
+                  onClick={() => onViewAppointment?.(apt.id)}
+                  className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/30 hover:bg-muted/60 hover:border-secondary/30 transition-all w-full text-left cursor-pointer group"
+                >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0 group-hover:bg-secondary/20 transition-colors">
                       {apt.is_group_booking ? <Users className="w-4 h-4 text-secondary" /> : <CalendarDays className="w-4 h-4 text-secondary" />}
                     </div>
                     <div className="min-w-0">
@@ -196,22 +129,13 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Badge variant={statusVariant(apt.status)}>{apt.status}</Badge>
-                    {canReschedule(apt) && (
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-secondary hover:bg-secondary/10" onClick={() => setRescheduleId(apt.id)} title="Reschedule">
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                    {canModify(apt) && (
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10" onClick={() => setCancelId(apt.id)} title="Cancel appointment">
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-                </div>
+                </button>
               ))}
             </div>
             {upcoming.length > 5 && (
-              <Button variant="link" size="sm" className="mt-3 text-secondary gap-1" onClick={() => onNavigate('appointments')}>
+              <Button variant="link" size="sm" className="mt-3 text-secondary gap-1" onClick={() => onViewAppointment?.()}>
                 View all appointments <ArrowRight className="w-3 h-3" />
               </Button>
             )}
@@ -254,45 +178,6 @@ export function UserDashboard({ onNavigate }: UserDashboardProps) {
           </button>
         ))}
       </div>
-
-      {/* Cancel dialog with reason */}
-      <AlertDialog open={!!cancelId} onOpenChange={(open) => { if (!open) { setCancelId(null); setCancelReason(''); } }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Appointment?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel this appointment? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-2">
-            <Label className="text-sm font-medium">Reason for cancellation *</Label>
-            <Textarea
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="Please provide a reason for cancelling this appointment..."
-              className="mt-1.5 min-h-[80px]"
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setCancelId(null); setCancelReason(''); }}>Keep</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleCancel}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!cancelReason.trim()}
-            >
-              Yes, Cancel
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <RescheduleDialog
-        open={!!rescheduleId}
-        onOpenChange={(open) => !open && setRescheduleId(null)}
-        currentDate={rescheduleApt?.appointment_date || ''}
-        currentTime={rescheduleApt?.appointment_time || ''}
-        onReschedule={handleReschedule}
-      />
     </div>
   );
 }

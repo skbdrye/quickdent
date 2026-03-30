@@ -157,7 +157,7 @@ export interface TimeSlot {
   available: boolean;
 }
 
-export type DashboardPage = 'dashboard' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions';
+export type DashboardPage = 'dashboard' | 'my-appointments' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions';
 export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services' | 'prescriptions';
 
 export function getBookingTypeLabel(isGroupBooking: boolean, memberCount?: number): string {

@@ -139,7 +139,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     try {
       await updateAssessment(user.id, { ...localAssessment, is_submitted: true });
       await submitAssessment(user.id);
-      toast({ title: 'Assessment submitted', description: 'Your medical assessment has been saved.' });
+      toast({ title: 'Assessment saved', description: 'Your medical assessment has been updated successfully.' });
       // Navigate back to dashboard after successful submission
       if (onNavigate) {
         onNavigate('dashboard');
@@ -305,9 +305,9 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
               <Button variant="outline" onClick={() => setStep('info')} className="gap-2">
                 <ChevronLeft className="w-4 h-4" /> Back to Info
               </Button>
-              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isAssessmentSubmitted() || isSaving}>
-                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> :
-                  <><Save className="w-4 h-4" /> {isAssessmentSubmitted() ? 'Already Submitted' : 'Submit Assessment'}</>}
+              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isSaving}>
+                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> :
+                  <><Save className="w-4 h-4" /> {isAssessmentSubmitted() ? 'Update Assessment' : 'Submit Assessment'}</>}
               </Button>
             </div>
           </CardContent>

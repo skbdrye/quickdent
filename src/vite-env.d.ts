@@ -61,3 +61,10 @@ declare module 'recharts' {
     [key: string]: any;
   }
 }
+
+declare module '@/components/user/UserAppointments' {
+  export interface UserAppointmentsProps {
+    highlightAppointmentId?: number | null;
+  }
+  export function UserAppointments(props: UserAppointmentsProps): JSX.Element;
+}

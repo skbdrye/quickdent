@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { appointmentsAPI, notificationsAPI } from '@/lib/api';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -104,7 +105,7 @@ function calculateAge(dob: string): number {
   return age;
 }
 
-export default function AppointmentManagement() {
+export default function AppointmentManagement({ highlightAppointmentId }: { highlightAppointmentId?: number | null }) {
   const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [memberMap, setMemberMap] = useState<Map<number, GroupMember[]>>(new Map());
@@ -174,6 +175,22 @@ export default function AppointmentManagement() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadAppointments]);
+
+  // Scroll to highlighted appointment
+  useEffect(() => {
+    if (highlightAppointmentId && appointments.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`admin-apt-${highlightAppointmentId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('bg-secondary/10');
+          setTimeout(() => {
+            el.classList.remove('bg-secondary/10');
+          }, 3000);
+        }
+      }, 500);
+    }
+  }, [highlightAppointmentId, appointments]);
 
   async function updateStatus(id: number, status: string) {
     await appointmentsAPI.updateStatus(id, status as 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled' | 'No Show');
@@ -268,6 +285,24 @@ export default function AppointmentManagement() {
     }
     setUploading(true);
     try {
+      // 1. Upload image to Supabase storage first
+      const ext = selectedImage.name.split('.').pop() || 'jpg';
+      const fileName = `prescription_${prescriptionTarget.appointmentId}_${Date.now()}.${ext}`;
+      const filePath = `prescriptions/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('prescriptions')
+        .upload(filePath, selectedImage, { upsert: true });
+
+      let imageUrl: string | null = null;
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage
+          .from('prescriptions')
+          .getPublicUrl(filePath);
+        imageUrl = urlData.publicUrl;
+      }
+
+      // 2. Create prescription record with image_url
       const insertData = {
         user_id: prescriptionTarget.userId,
         appointment_id: prescriptionTarget.appointmentId,
@@ -276,6 +311,7 @@ export default function AppointmentManagement() {
         instructions: '',
         prescribed_by: prescribedBy,
         prescription_date: new Date().toISOString().split('T')[0],
+        image_url: imageUrl,
         ...(prescriptionTarget.groupMemberId && { group_member_id: prescriptionTarget.groupMemberId }),
       };
 
@@ -436,8 +472,10 @@ export default function AppointmentManagement() {
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No appointments found</TableCell>
                   </TableRow>
                 ) : (
-                  filteredAppointments.map((apt) => (
-                    <TableRow key={apt.id}>
+                  filteredAppointments.map((apt) => {
+                    const isDue = new Date() >= new Date(`${apt.appointment_date}T${apt.appointment_time}`);
+                    return (
+                    <TableRow key={apt.id} id={`admin-apt-${apt.id}`} className={cn('transition-colors duration-500', highlightAppointmentId === apt.id && 'bg-secondary/10')}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{getDisplayName(apt)}</p>
@@ -474,9 +512,11 @@ export default function AppointmentManagement() {
                               <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300" onClick={() => setRescheduleId(apt.id)}>
                                 <RotateCcw className="h-3.5 w-3.5" /> Reschedule
                               </Button>
-                              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300" onClick={() => updateStatus(apt.id, 'No Show')}>
-                                <AlertTriangle className="h-3.5 w-3.5" /> No Show
-                              </Button>
+                              {isDue && (
+                                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300" onClick={() => updateStatus(apt.id, 'No Show')}>
+                                  <AlertTriangle className="h-3.5 w-3.5" /> No Show
+                                </Button>
+                              )}
                               <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300" onClick={() => setAdminCancelId(apt.id)}>
                                 <XCircle className="h-3.5 w-3.5" /> Cancel
                               </Button>
@@ -485,7 +525,8 @@ export default function AppointmentManagement() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

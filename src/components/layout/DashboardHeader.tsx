@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 interface DashboardHeaderProps {
   title?: string;
-  onNavigateToAppointment?: () => void;
+  onNavigateToAppointment?: (appointmentId?: number | null) => void;
   onNavigateToPrescriptions?: () => void;
 }
 

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CalendarPlus, User, Settings, LogOut, Users, Stethoscope, FileText } from 'lucide-react';
+import { LayoutDashboard, CalendarPlus, User, Settings, LogOut, Users, Stethoscope, FileText, CalendarCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/lib/store';
 import type { DashboardPage } from '@/lib/types';
@@ -14,6 +14,7 @@ export const userNavItems: { page: DashboardPage; icon: typeof LayoutDashboard; 
   { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'appointments', icon: CalendarPlus, label: 'Book Appointment' },
   { page: 'group-booking', icon: Users, label: 'Book for Others' },
+  { page: 'my-appointments', icon: CalendarCheck, label: 'Appointments' },
   { page: 'services', icon: Stethoscope, label: 'Services' },
   { page: 'prescriptions', icon: FileText, label: 'Prescriptions' },
   { page: 'profile', icon: User, label: 'Profile' },

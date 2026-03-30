@@ -124,7 +124,13 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
       toast({ title: 'Error', description: 'Password does not meet the requirements', variant: 'destructive', duration: 2500 });
       return;
     }
-    if (!/^\d{7,15}$/.test(regPhone.replace(/\s/g, ''))) {
+    const cleanPhone = regPhone.replace(/\s/g, '');
+    if (regCountryCode === '+63') {
+      if (cleanPhone.length !== 10) {
+        toast({ title: 'Error', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive', duration: 2500 });
+        return;
+      }
+    } else if (!/^\d{7,15}$/.test(cleanPhone)) {
       toast({ title: 'Error', description: 'Please enter a valid phone number', variant: 'destructive', duration: 2500 });
       return;
     }
@@ -255,8 +261,8 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   <Input
                     value={regPhone}
                     onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Phone number"
-                    maxLength={15}
+                    placeholder={regCountryCode === '+63' ? '9XXXXXXXXX' : 'Phone number'}
+                    maxLength={regCountryCode === '+63' ? 10 : 15}
                     className="flex-1 min-w-0"
                   />
                 </div>

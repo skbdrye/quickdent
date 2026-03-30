@@ -44,7 +44,7 @@ function getNotificationIcon(type: string) {
 }
 
 interface NotificationBellProps {
-  onNavigateToAppointment?: () => void;
+  onNavigateToAppointment?: (appointmentId?: number | null) => void;
   onNavigateToPrescriptions?: () => void;
 }
 
@@ -101,7 +101,7 @@ export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescrip
 
     // If this notification has a related appointment, navigate to appointments view
     if (n.related_appointment_id && onNavigateToAppointment) {
-      onNavigateToAppointment();
+      onNavigateToAppointment(n.related_appointment_id);
       setOpen(false);
     }
   };

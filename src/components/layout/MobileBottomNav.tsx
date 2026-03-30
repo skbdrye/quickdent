@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarPlus, Users, User, MoreHorizontal, Stethoscope, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, CalendarPlus, Users, User, MoreHorizontal, Stethoscope, FileText, Settings, CalendarCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DashboardPage } from '@/lib/types';
 import { useState } from 'react';
@@ -11,11 +11,12 @@ interface MobileBottomNavProps {
 const primaryItems: { page: DashboardPage; icon: typeof LayoutDashboard; label: string }[] = [
   { page: 'dashboard', icon: LayoutDashboard, label: 'Home' },
   { page: 'appointments', icon: CalendarPlus, label: 'Book' },
-  { page: 'group-booking', icon: Users, label: 'Others' },
+  { page: 'my-appointments', icon: CalendarCheck, label: 'Appts' },
   { page: 'profile', icon: User, label: 'Profile' },
 ];
 
 const moreItems: { page: DashboardPage; icon: typeof LayoutDashboard; label: string }[] = [
+  { page: 'group-booking', icon: Users, label: 'Book for Others' },
   { page: 'services', icon: Stethoscope, label: 'Services' },
   { page: 'prescriptions', icon: FileText, label: 'Prescriptions' },
   { page: 'settings', icon: Settings, label: 'Settings' },

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GroupMember, ClinicScheduleDay, DashboardPage } from '@/lib/types';
+import { SuccessModal } from '@/components/shared/SuccessModal';
 
 const RELATIONSHIPS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend'];
 
@@ -60,6 +61,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [expandedMember, setExpandedMember] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; count: number; date: string }>({ open: false, count: 0, date: '' });
   const membersCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -209,10 +211,12 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         `${user.username} booked for ${members.length} member(s): ${members.map(m => m.member_name).join(', ')} on ${selectedDate}.`,
         'new_booking'
       );
+      const bookedCount = members.length;
+      const bookedDate = selectedDate;
       setMembers([emptyMember()]);
       setIncludeSelf(false);
       setSelectedDate(null);
-      if (onNavigate) onNavigate('dashboard');
+      setSuccessModal({ open: true, count: bookedCount, date: bookedDate });
     } catch {
       toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
     }
@@ -464,6 +468,16 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       <Button onClick={handleBook} className="w-full" size="lg" disabled={isSubmitting}>
         {isSubmitting ? 'Booking...' : `Book for ${members.length} member${members.length !== 1 ? 's' : ''}`}
       </Button>
+
+      <SuccessModal
+        open={successModal.open}
+        title="Companion Booking Confirmed!"
+        description={`${successModal.count} member(s) booked for ${successModal.date ? new Date(successModal.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''}. Pending admin approval.`}
+        onClose={() => {
+          setSuccessModal({ open: false, count: 0, date: '' });
+          if (onNavigate) onNavigate('dashboard');
+        }}
+      />
     </div>
   );
 }

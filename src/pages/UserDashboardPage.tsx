@@ -1,9 +1,10 @@
-import { useState, lazy, Suspense, useEffect } from 'react';
+import { useState, lazy, Suspense, useEffect, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore, useNotificationsStore, useAppointmentsStore } from '@/lib/store';
 import { remindersAPI } from '@/lib/api';
 import { UserSidebar } from '@/components/layout/UserSidebar';
 import { UserDashboard } from '@/components/user/UserDashboard';
+import { UserAppointments } from '@/components/user/UserAppointments';
 import { OnboardingTutorial } from '@/components/user/OnboardingTutorial';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
@@ -28,6 +29,7 @@ function PageLoader() {
 export default function UserDashboardPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
+  const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
   const { fetchNotifications } = useNotificationsStore();
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
@@ -48,12 +50,32 @@ export default function UserDashboardPage() {
   }, [user?.id, fetchNotifications, fetchUserAppointments]);
 
   // Generate appointment reminders (1 day + 2 hours before)
-  // Only for regular users, NOT admins
   useEffect(() => {
     if (user?.id && user.role === 'user' && appointments.length > 0) {
       remindersAPI.generateReminders(user.id, appointments).catch(() => {});
     }
   }, [user?.id, user?.role, appointments]);
+
+  const handleNavigateToAppointment = useCallback((appointmentId?: number | null) => {
+    setHighlightAppointmentId(appointmentId || null);
+    setActivePage('my-appointments');
+  }, []);
+
+  const handleNavigateToPrescriptions = useCallback(() => {
+    setActivePage('prescriptions');
+  }, []);
+
+  const handleNavigateToMyAppointments = useCallback((appointmentId?: number) => {
+    setHighlightAppointmentId(appointmentId || null);
+    setActivePage('my-appointments');
+  }, []);
+
+  // Clear highlight when leaving the page
+  useEffect(() => {
+    if (activePage !== 'my-appointments') {
+      setHighlightAppointmentId(null);
+    }
+  }, [activePage]);
 
   if (!isAuthenticated || !user || user.role !== 'user') {
     return <Navigate to="/" />;
@@ -64,6 +86,7 @@ export default function UserDashboardPage() {
       case 'dashboard': return 'Dashboard';
       case 'appointments': return 'Book Appointment';
       case 'group-booking': return 'Book for Others';
+      case 'my-appointments': return 'My Appointments';
       case 'services': return 'Services';
       case 'prescriptions': return 'Prescriptions';
       case 'profile': return 'Profile';
@@ -72,24 +95,17 @@ export default function UserDashboardPage() {
     }
   };
 
-  const handleNavigateToAppointment = () => {
-    setActivePage('appointments');
-  };
-
-  const handleNavigateToPrescriptions = () => {
-    setActivePage('prescriptions');
-  };
-
   const renderPage = () => {
     switch (activePage) {
-      case 'dashboard': return <UserDashboard onNavigate={setActivePage} />;
+      case 'dashboard': return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;
       case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentBooking onNavigate={setActivePage} /></Suspense>;
       case 'group-booking': return <Suspense fallback={<PageLoader />}><GroupBooking onNavigate={setActivePage} /></Suspense>;
+      case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} />;
       case 'services': return <Suspense fallback={<PageLoader />}><ServicesDisplay /></Suspense>;
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView /></Suspense>;
       case 'profile': return <Suspense fallback={<PageLoader />}><PatientProfile onNavigate={setActivePage} /></Suspense>;
       case 'settings': return <Suspense fallback={<PageLoader />}><UserSettings /></Suspense>;
-      default: return <UserDashboard onNavigate={setActivePage} />;
+      default: return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;
     }
   };
 

@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect } from 'react';
+import { useState, lazy, Suspense, useEffect, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthStore, useNotificationsStore } from '@/lib/store';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
@@ -25,6 +25,7 @@ function PageLoader() {
 export default function AdminDashboardPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<AdminPage>('dashboard');
+  const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
   const { fetchNotifications } = useNotificationsStore();
   const navigate = useNavigate();
 
@@ -42,6 +43,18 @@ export default function AdminDashboardPage() {
     }
   }, [user?.id, fetchNotifications]);
 
+  const handleNavigateToAppointment = useCallback((appointmentId?: number | null) => {
+    setHighlightAppointmentId(appointmentId || null);
+    setActivePage('appointments');
+  }, []);
+
+  // Clear highlight when leaving appointments
+  useEffect(() => {
+    if (activePage !== 'appointments') {
+      setHighlightAppointmentId(null);
+    }
+  }, [activePage]);
+
   if (!isAuthenticated || !user || user.role !== 'admin') {
     return <Navigate to="/" />;
   }
@@ -58,14 +71,10 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleNavigateToAppointment = () => {
-    setActivePage('appointments');
-  };
-
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <AdminDashboard onNavigate={setActivePage} />;
-      case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentManagement /></Suspense>;
+      case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentManagement highlightAppointmentId={highlightAppointmentId} /></Suspense>;
       case 'patients': return <Suspense fallback={<PageLoader />}><PatientList /></Suspense>;
       case 'schedule': return <Suspense fallback={<PageLoader />}><ClinicSchedule /></Suspense>;
       case 'services': return <Suspense fallback={<PageLoader />}><ServiceManagement /></Suspense>;

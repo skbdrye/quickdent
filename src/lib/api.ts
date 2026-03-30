@@ -907,41 +907,54 @@ export const onboardingAPI = {
 };
 
 // ========== APPOINTMENT REMINDERS API ==========
+const _reminderProcessing = new Set<string>();
+
 export const remindersAPI = {
   async generateReminders(userId: string, appointments: { id: number; appointment_date: string; appointment_time: string; status: string }[]) {
-    const now = new Date();
-    for (const apt of appointments) {
-      if (apt.status !== 'Pending' && apt.status !== 'Confirmed') continue;
-      const aptDateTime = new Date(`${apt.appointment_date}T${apt.appointment_time}`);
-      const hoursUntil = (aptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    // Session-level deduplication: prevent concurrent calls from creating duplicates
+    const sessionKey = `reminder_session_${userId}`;
+    if (_reminderProcessing.has(sessionKey)) return;
+    _reminderProcessing.add(sessionKey);
 
-      if (hoursUntil > 0 && hoursUntil <= 24 && hoursUntil > 2) {
-        const reminderKey = `reminder_24h_${apt.id}`;
-        if (!localStorage.getItem(reminderKey)) {
-          await notificationsAPI.create({
-            user_id: userId,
-            title: 'Appointment Tomorrow',
-            message: `Your appointment is tomorrow at ${apt.appointment_time}. Please make sure to show up on time!`,
-            type: 'reminder',
-            related_appointment_id: apt.id,
-          });
-          localStorage.setItem(reminderKey, 'true');
+    try {
+      const now = new Date();
+      for (const apt of appointments) {
+        if (apt.status !== 'Pending' && apt.status !== 'Confirmed') continue;
+        const aptDateTime = new Date(`${apt.appointment_date}T${apt.appointment_time}`);
+        const hoursUntil = (aptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+        // 24-hour reminder (fires between 2h and 24h before)
+        if (hoursUntil > 2 && hoursUntil <= 24) {
+          const reminderKey = `reminder_24h_${userId}_${apt.id}`;
+          if (!localStorage.getItem(reminderKey)) {
+            localStorage.setItem(reminderKey, 'true');
+            await notificationsAPI.create({
+              user_id: userId,
+              title: 'Appointment Tomorrow',
+              message: `Your appointment is tomorrow at ${apt.appointment_time}. Please make sure to show up on time!`,
+              type: 'reminder',
+              related_appointment_id: apt.id,
+            });
+          }
+        }
+
+        // 2-hour reminder (fires between 0 and 2h before)
+        if (hoursUntil > 0 && hoursUntil <= 2) {
+          const reminderKey = `reminder_2h_${userId}_${apt.id}`;
+          if (!localStorage.getItem(reminderKey)) {
+            localStorage.setItem(reminderKey, 'true');
+            await notificationsAPI.create({
+              user_id: userId,
+              title: 'Appointment Very Soon',
+              message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${apt.appointment_time}. If you need to cancel, please do so at least 1 hour before.`,
+              type: 'reminder',
+              related_appointment_id: apt.id,
+            });
+          }
         }
       }
-
-      if (hoursUntil > 0 && hoursUntil <= 2) {
-        const reminderKey = `reminder_2h_${apt.id}`;
-        if (!localStorage.getItem(reminderKey)) {
-          await notificationsAPI.create({
-            user_id: userId,
-            title: 'Appointment Very Soon',
-            message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${apt.appointment_time}. If you need to cancel, please do so at least 1 hour before.`,
-            type: 'reminder',
-            related_appointment_id: apt.id,
-          });
-          localStorage.setItem(reminderKey, 'true');
-        }
-      }
+    } finally {
+      _reminderProcessing.delete(sessionKey);
     }
   },
 };
