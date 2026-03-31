@@ -162,6 +162,15 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     startTransition(() => setRegUsername(filtered));
   }, [startTransition]);
 
+  // Password input handler - use deferred state for non-blocking validation display
+  const handlePasswordChange = useCallback((val: string) => {
+    startTransition(() => setRegPassword(val));
+  }, [startTransition]);
+  // Phone input handler - filter non-digits
+  const handlePhoneChange = useCallback((val: string) => {
+    setRegPhone(val.replace(/\D/g, ''));
+  }, []);
+
   // Memoize country code options to prevent re-rendering 200+ items on every keystroke
   const countryOptions = useMemo(() => (
     COUNTRY_CODES.map(c => (
@@ -266,7 +275,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   </div>
                   <Input
                     value={regPhone}
-                    onChange={e => setRegPhone(e.target.value.replace(/\D/g, ''))}
+                    onChange={e => handlePhoneChange(e.target.value)}
                     placeholder={regCountryCode === '+63' ? '9XXXXXXXXX' : 'Phone number'}
                     maxLength={regCountryCode === '+63' ? 10 : 15}
                     className="flex-1 min-w-0"
@@ -279,7 +288,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   <Input
                     type={showRegPassword ? 'text' : 'password'}
                     value={regPassword}
-                    onChange={e => startTransition(() => setRegPassword(e.target.value))}
+                    onChange={e => handlePasswordChange(e.target.value)}
                     placeholder="Create a password"
                     className="pr-10"
                   />

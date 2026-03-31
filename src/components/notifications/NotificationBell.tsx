@@ -45,7 +45,7 @@ function getNotificationIcon(type: string) {
 
 interface NotificationBellProps {
   onNavigateToAppointment?: (appointmentId?: number | null) => void;
-  onNavigateToPrescriptions?: () => void;
+  onNavigateToPrescriptions?: (appointmentId?: number | null) => void;
 }
 
 export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescriptions }: NotificationBellProps) {
@@ -92,9 +92,9 @@ export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescrip
   const handleNotificationClick = (n: Notification) => {
     if (!n.is_read) markAsRead(n.id);
 
-    // Prescription notification -> go to prescriptions tab
+    // Prescription notification -> go to prescriptions tab with highlight
     if (n.type === 'prescription' && onNavigateToPrescriptions) {
-      onNavigateToPrescriptions();
+      onNavigateToPrescriptions(n.related_appointment_id);
       setOpen(false);
       return;
     }

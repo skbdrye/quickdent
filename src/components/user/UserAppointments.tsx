@@ -209,7 +209,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                       <p className="font-semibold text-sm text-foreground">
                         {apt.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
-                      {apt.status === 'Confirmed' && (apt as unknown as { service?: string }).service && (
+                      {(apt.status === 'Confirmed' || apt.status === 'Completed') && (apt as unknown as { service?: string }).service && (
                         <p className="text-xs text-secondary font-medium flex items-center gap-1 mt-0.5">
                           <Stethoscope className="w-3 h-3" />
                           Service: {(apt as unknown as { service?: string }).service}

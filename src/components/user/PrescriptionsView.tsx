@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/lib/store';
 import { FileText, Download, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface Prescription {
   id: number;
@@ -34,12 +35,35 @@ interface AppointmentGroup {
   prescriptions: GroupMemberPrescription[];
 }
 
-export default function PrescriptionsView() {
+interface PrescriptionsViewProps {
+  highlightAppointmentId?: number | null;
+  highlightKey?: number;
+}
+
+export default function PrescriptionsView({ highlightAppointmentId, highlightKey }: PrescriptionsViewProps) {
   const { user } = useAuthStore();
   const [appointmentGroups, setAppointmentGroups] = useState<AppointmentGroup[]>([]);
   const [viewingPrescriptions, setViewingPrescriptions] = useState<GroupMemberPrescription[] | null>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [highlightingId, setHighlightingId] = useState<number | null>(null);
+
+  // Scroll to and highlight the prescription card for a specific appointment
+  useEffect(() => {
+    if (highlightAppointmentId && !loading && appointmentGroups.length > 0) {
+      setHighlightingId(highlightAppointmentId);
+      setTimeout(() => {
+        const el = document.getElementById(`rx-group-${highlightAppointmentId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+      const timer = setTimeout(() => {
+        setHighlightingId(null);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightAppointmentId, highlightKey, loading, appointmentGroups]);
 
   const loadPrescriptions = useCallback(async () => {
     if (!user) return;
@@ -181,7 +205,14 @@ export default function PrescriptionsView() {
       ) : (
         <div className="space-y-3">
           {appointmentGroups.map((group, idx) => (
-            <Card key={group.appointment_id ?? `group-${idx}`} className="border-border/50 overflow-hidden transition-all hover:shadow-sm">
+            <Card
+              key={group.appointment_id ?? `group-${idx}`}
+              id={group.appointment_id ? `rx-group-${group.appointment_id}` : undefined}
+              className={cn(
+                'border-border/50 overflow-hidden transition-all duration-500 hover:shadow-sm',
+                highlightingId === group.appointment_id && 'ring-2 ring-secondary ring-offset-2 shadow-md'
+              )}
+            >
               <CardContent className="p-0">
                 <div className="flex items-center justify-between p-4">
                   <div className="flex items-start gap-3 min-w-0">
@@ -196,8 +227,9 @@ export default function PrescriptionsView() {
                       <p className="font-semibold text-sm text-foreground">
                         {group.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
-                      {group.service && group.status === 'Confirmed' && (
-                        <p className="text-xs text-secondary font-medium mt-0.5">
+                      {group.service && (
+                        <p className="text-xs text-secondary font-medium mt-0.5 flex items-center gap-1">
+                          <Stethoscope className="w-3 h-3" />
                           Service: {group.service}
                         </p>
                       )}

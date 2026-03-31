@@ -31,6 +31,8 @@ export default function UserDashboardPage() {
   const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
   const [highlightKey, setHighlightKey] = useState(0);
+  const [prescriptionHighlightId, setPrescriptionHighlightId] = useState<number | null>(null);
+  const [prescriptionHighlightKey, setPrescriptionHighlightKey] = useState(0);
   const { fetchNotifications } = useNotificationsStore();
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
@@ -63,7 +65,9 @@ export default function UserDashboardPage() {
     setActivePage('my-appointments');
   }, []);
 
-  const handleNavigateToPrescriptions = useCallback(() => {
+  const handleNavigateToPrescriptions = useCallback((appointmentId?: number | null) => {
+    setPrescriptionHighlightId(appointmentId || null);
+    setPrescriptionHighlightKey(k => k + 1);
     setActivePage('prescriptions');
   }, []);
 
@@ -73,10 +77,13 @@ export default function UserDashboardPage() {
     setActivePage('my-appointments');
   }, []);
 
-  // Clear highlight when leaving the page
+  // Clear highlights when leaving the pages
   useEffect(() => {
     if (activePage !== 'my-appointments') {
       setHighlightAppointmentId(null);
+    }
+    if (activePage !== 'prescriptions') {
+      setPrescriptionHighlightId(null);
     }
   }, [activePage]);
 
@@ -105,7 +112,7 @@ export default function UserDashboardPage() {
       case 'group-booking': return <Suspense fallback={<PageLoader />}><GroupBooking onNavigate={setActivePage} /></Suspense>;
       case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} />;
       case 'services': return <Suspense fallback={<PageLoader />}><ServicesDisplay /></Suspense>;
-      case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView /></Suspense>;
+      case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView highlightAppointmentId={prescriptionHighlightId} highlightKey={prescriptionHighlightKey} /></Suspense>;
       case 'profile': return <Suspense fallback={<PageLoader />}><PatientProfile onNavigate={setActivePage} /></Suspense>;
       case 'settings': return <Suspense fallback={<PageLoader />}><UserSettings /></Suspense>;
       default: return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;

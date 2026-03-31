@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 /// <reference types="tailwindcss/tailwind" />
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // Comprehensive type augmentations for library compatibility
 declare module 'react-hook-form' {
   export type FieldValues = Record<string, any>;
