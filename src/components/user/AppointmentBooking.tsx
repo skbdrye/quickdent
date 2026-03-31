@@ -5,7 +5,7 @@ import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } f
 import { notificationsAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import type { ClinicScheduleDay, DashboardPage } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 
@@ -131,7 +131,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       const patientName = profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : user.username;
       await notificationsAPI.notifyAdmins(
         'New Appointment',
-        `${patientName} booked an appointment on ${selectedDate} at ${selectedTime}.`,
+        `${patientName} booked an appointment on ${selectedDate} at ${formatTime(selectedTime)}.`,
         'new_booking',
         newApt?.id
       );
@@ -167,7 +167,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Book Appointment</h1>
         <p className="text-sm text-muted-foreground">Pick a date and time for your dental visit</p>
@@ -270,7 +270,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       <SuccessModal
         open={successModal.open}
         title="Appointment Booked!"
-        description={`Your appointment on ${successModal.date ? new Date(successModal.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''} at ${successModal.time} is pending admin approval.`}
+        description={`Your appointment on ${successModal.date ? new Date(successModal.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''} at ${formatTime(successModal.time)} is pending admin approval.`}
         onClose={() => {
           setSuccessModal({ open: false, date: '', time: '' });
           if (onNavigate) onNavigate('dashboard');

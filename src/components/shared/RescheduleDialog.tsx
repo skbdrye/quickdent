@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChevronLeft, ChevronRight, Clock, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import { useAppointmentsStore, useClinicStore } from '@/lib/store';
 import type { ClinicScheduleDay } from '@/lib/types';
 
@@ -103,7 +103,7 @@ export function RescheduleDialog({ open, onOpenChange, currentDate, currentTime,
 
         {currentDate && (
           <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 mb-3">
-            Current: {new Date(currentDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {currentTime}
+            Current: {new Date(currentDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {formatTime(currentTime)}
           </div>
         )}
 

@@ -2,6 +2,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember, Notification } from './types';
 import { formatPhoneWithCountry, normalizePhoneForLogin } from './countries';
+import { formatTime } from './utils';
 import bcryptjs from 'bcryptjs';
 
 // ========== AUTH API ==========
@@ -941,7 +942,7 @@ export const remindersAPI = {
             await notificationsAPI.create({
               user_id: userId,
               title: 'Appointment Tomorrow',
-              message: `Your appointment is tomorrow at ${apt.appointment_time}. Please make sure to show up on time!`,
+              message: `Your appointment is tomorrow at ${formatTime(apt.appointment_time)}. Please make sure to show up on time!`,
               type: 'reminder',
               related_appointment_id: apt.id,
             });
@@ -956,7 +957,7 @@ export const remindersAPI = {
             await notificationsAPI.create({
               user_id: userId,
               title: 'Appointment Very Soon',
-              message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${apt.appointment_time}. If you need to cancel, please do so at least 1 hour before.`,
+              message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${formatTime(apt.appointment_time)}. If you need to cancel, please do so at least 1 hour before.`,
               type: 'reminder',
               related_appointment_id: apt.id,
             });

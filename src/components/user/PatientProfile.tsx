@@ -274,23 +274,23 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
                 <Label>Middle Name</Label>
                 <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value.slice(0, 30) })} placeholder="Middle name" maxLength={30} className="w-full truncate" />
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <Label className="text-xs sm:text-sm">Date of Birth *</Label>
-                <div className="grid grid-cols-3 gap-2 mt-1">
+                <div className="grid grid-cols-3 gap-1.5 mt-1">
                   <Select value={dobParts.month} onValueChange={v => handleDobChange('month', v)}>
-                    <SelectTrigger className="text-sm"><SelectValue placeholder="Month" /></SelectTrigger>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Month" /></SelectTrigger>
                     <SelectContent className="max-h-48">
                       {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={dobParts.day} onValueChange={v => handleDobChange('day', v)}>
-                    <SelectTrigger className="text-sm"><SelectValue placeholder="Day" /></SelectTrigger>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Day" /></SelectTrigger>
                     <SelectContent className="max-h-48">
                       {days.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <Select value={dobParts.year} onValueChange={v => handleDobChange('year', v)}>
-                    <SelectTrigger className="text-sm"><SelectValue placeholder="Year" /></SelectTrigger>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Year" /></SelectTrigger>
                     <SelectContent className="max-h-48">
                       {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                     </SelectContent>

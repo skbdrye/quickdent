@@ -30,6 +30,7 @@ export type Database = {
           patient_name: string
           reschedule_count: number | null
           rescheduled_at: string | null
+          service: string | null
           status: string | null
           user_id: string
         }
@@ -48,6 +49,7 @@ export type Database = {
           patient_name: string
           reschedule_count?: number | null
           rescheduled_at?: string | null
+          service?: string | null
           status?: string | null
           user_id: string
         }
@@ -66,6 +68,7 @@ export type Database = {
           patient_name?: string
           reschedule_count?: number | null
           rescheduled_at?: string | null
+          service?: string | null
           status?: string | null
           user_id?: string
         }

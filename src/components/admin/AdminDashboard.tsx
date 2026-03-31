@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, CalendarCheck, Clock, TrendingUp, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { formatTime } from '@/lib/utils';
 import type { AdminPage } from '@/lib/types';
 
 interface StatsData {
@@ -186,7 +187,7 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {apt.appointment_time}
+                      {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {formatTime(apt.appointment_time)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/lib/store';
 import { FileText, Download, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 interface Prescription {
   id: number;
@@ -129,10 +129,10 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
     if (aptIdSet.size > 0) {
       const { data: apts } = await supabase
         .from('appointments')
-        .select('id, appointment_date, appointment_time, is_group_booking, patient_name')
+        .select('id, appointment_date, appointment_time, is_group_booking, patient_name, service')
         .in('id', Array.from(aptIdSet));
       if (apts) {
-        apts.forEach((a) => aptMap.set(a.id, { ...a, service: (a as Record<string, unknown>).service as string | null || null }));
+        apts.forEach((a) => aptMap.set(a.id, { ...a, service: a.service || null }));
       }
     }
 
@@ -245,7 +245,7 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
                         {group.appointment_time && (
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {group.appointment_time}
+                            {formatTime(group.appointment_time)}
                           </span>
                         )}
                       </div>

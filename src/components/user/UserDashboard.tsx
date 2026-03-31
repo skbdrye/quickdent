@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore, useAppointmentsStore } from '@/lib/store';
 import { statusVariant } from '@/lib/types';
+import { formatTime } from '@/lib/utils';
 import type { DashboardPage } from '@/lib/types';
 
 interface UserDashboardProps {
@@ -128,7 +129,7 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {apt.appointment_time}
+                        {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {formatTime(apt.appointment_time)}
                       </p>
                     </div>
                   </div>

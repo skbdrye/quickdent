@@ -9,7 +9,7 @@ import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } f
 import { groupMembersAPI, notificationsAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import type { GroupMember, ClinicScheduleDay, DashboardPage } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 
@@ -241,7 +241,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   const selectedTimesSet = new Set(members.map(m => m.appointment_time).filter(Boolean));
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Book for Others</h1>
         <p className="text-sm text-muted-foreground">Book for family members, friends, or include yourself</p>
@@ -282,7 +282,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                       {isSelf && <span className="text-secondary ml-1">(You)</span>}
                     </span>
                     {member.appointment_time && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{member.appointment_time}</span>
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{formatTime(member.appointment_time)}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">

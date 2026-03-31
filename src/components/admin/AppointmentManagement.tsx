@@ -16,7 +16,7 @@ import { appointmentsAPI, notificationsAPI, servicesAPI } from '@/lib/api';
 import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -210,7 +210,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
       await notificationsAPI.create({
         user_id: apt.user_id,
         title: `Appointment ${status}`,
-        message: `Your appointment on ${apt.appointment_date} at ${apt.appointment_time} has been marked as ${status}.`,
+        message: `Your appointment on ${apt.appointment_date} at ${formatTime(apt.appointment_time)} has been marked as ${status}.`,
         type: status === 'Confirmed' ? 'reminder' : status === 'No Show' ? 'no_show_warning' : 'status_change',
         related_appointment_id: id,
       });
@@ -230,13 +230,13 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
         await notificationsAPI.create({
           user_id: apt.user_id,
           title: 'Appointment Rescheduled',
-          message: `Your appointment has been rescheduled to ${newDate} at ${newTime} by the clinic.`,
+          message: `Your appointment has been rescheduled to ${newDate} at ${formatTime(newTime)} by the clinic.`,
           type: 'reschedule',
           related_appointment_id: rescheduleId,
         });
       }
-      toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
-      setSuccessModal({ open: true, title: 'Appointment Rescheduled', description: `Appointment has been moved to ${newDate} at ${newTime}.` });
+      toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${formatTime(newTime)}.` });
+      setSuccessModal({ open: true, title: 'Appointment Rescheduled', description: `Appointment has been moved to ${newDate} at ${formatTime(newTime)}.` });
       loadAppointments();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
@@ -500,7 +500,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                         </div>
                       </TableCell>
                       <TableCell>{new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</TableCell>
-                      <TableCell>{apt.appointment_time}</TableCell>
+                      <TableCell>{formatTime(apt.appointment_time)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">{getBookingTypeLabel(apt)}</Badge>
                       </TableCell>
@@ -580,7 +580,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Time</span>
-                    <span className="font-medium text-foreground">{selectedAppointment?.appointment_time}</span>
+                    <span className="font-medium text-foreground">{formatTime(selectedAppointment?.appointment_time || '')}</span>
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Status</span>
@@ -757,7 +757,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                               {member.relationship && <span className="text-xs text-muted-foreground">({member.relationship})</span>}
                             </div>
                             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                              <span>Time: {member.appointment_time}</span>
+                              <span>Time: {formatTime(member.appointment_time)}</span>
                               {member.date_of_birth && <span>Age: {calculateAge(member.date_of_birth)}</span>}
                               {member.gender && <span>{member.gender}</span>}
                             </div>
@@ -950,7 +950,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                   await notificationsAPI.create({
                     user_id: apt.user_id,
                     title: 'Appointment Cancelled by Clinic',
-                    message: `Your appointment on ${apt.appointment_date} at ${apt.appointment_time} has been cancelled.\n\nReason: ${adminCancelReason.trim()}`,
+                    message: `Your appointment on ${apt.appointment_date} at ${formatTime(apt.appointment_time)} has been cancelled.\n\nReason: ${adminCancelReason.trim()}`,
                     type: 'cancellation',
                     related_appointment_id: adminCancelId,
                   });

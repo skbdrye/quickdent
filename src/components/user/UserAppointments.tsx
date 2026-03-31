@@ -17,7 +17,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 
 interface UserAppointmentsProps {
   highlightAppointmentId?: number | null;
@@ -102,7 +102,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
       if (apt) {
         await notificationsAPI.notifyAdmins(
           'Appointment Cancelled',
-          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${apt.appointment_time}.\n\nReason: ${cancelReason.trim()}`,
+          `${user?.username || 'A patient'} cancelled their appointment on ${apt.appointment_date} at ${formatTime(apt.appointment_time)}.\n\nReason: ${cancelReason.trim()}`,
           'cancellation',
           cancelId
         );
@@ -125,14 +125,14 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
       await rescheduleAppointment(rescheduleId, newDate, newTime, false);
       await notificationsAPI.notifyAdmins(
         'Appointment Rescheduled',
-        `${user?.username || 'A patient'} rescheduled their appointment to ${newDate} at ${newTime}.`,
+        `${user?.username || 'A patient'} rescheduled their appointment to ${newDate} at ${formatTime(newTime)}.`,
         'reschedule',
         rescheduleId
       );
       setSuccessModal({
         open: true,
         title: 'Appointment Rescheduled',
-        description: `Your appointment has been moved to ${new Date(newDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} at ${newTime}.`,
+        description: `Your appointment has been moved to ${new Date(newDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} at ${formatTime(newTime)}.`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
@@ -227,7 +227,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {apt.appointment_time}
+                          {formatTime(apt.appointment_time)}
                         </span>
                       </div>
                       {apt.notes && (
