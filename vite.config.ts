@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
       minify: 'esbuild',
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
+        external: ['react-is'],
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
