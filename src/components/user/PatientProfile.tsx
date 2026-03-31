@@ -230,6 +230,34 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     }
   }, [dobParts, updateLocalProfile]);
 
+  // Last checkup date select helpers
+  const lastCheckupParts = useMemo(() => {
+    if (!localAssessment.last_checkup) return { year: '', month: '', day: '' };
+    const [y, m, d] = localAssessment.last_checkup.split('-');
+    return { year: y || '', month: m || '', day: d || '' };
+  }, [localAssessment.last_checkup]);
+
+  const checkupYears = useMemo(() => Array.from({ length: 50 }, (_, i) => String(currentYear - i)), [currentYear]);
+  const checkupDaysInMonth = useMemo(() => {
+    if (!lastCheckupParts.year || !lastCheckupParts.month) return 31;
+    return new Date(Number(lastCheckupParts.year), Number(lastCheckupParts.month), 0).getDate();
+  }, [lastCheckupParts.year, lastCheckupParts.month]);
+  const checkupDays = useMemo(() => Array.from({ length: checkupDaysInMonth }, (_, i) => String(i + 1).padStart(2, '0')), [checkupDaysInMonth]);
+
+  const handleLastCheckupChange = useCallback((part: 'year' | 'month' | 'day', value: string) => {
+    const newParts = { ...lastCheckupParts, [part]: value };
+    // Auto-fix day if it exceeds the new month's max
+    if (newParts.year && newParts.month) {
+      const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
+      if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
+    }
+    if (newParts.year && newParts.month && newParts.day) {
+      updateLocalAssessment({ last_checkup: `${newParts.year}-${newParts.month}-${newParts.day}` });
+    } else {
+      updateLocalAssessment({ last_checkup: '' });
+    }
+  }, [lastCheckupParts, updateLocalAssessment]);
+
   return (
     <div className="space-y-6 w-full max-w-4xl overflow-hidden">
       <div>
@@ -362,7 +390,26 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Date of last medical check-up</Label>
-                <Input type="date" value={localAssessment.last_checkup} onChange={e => updateLocalAssessment({ last_checkup: e.target.value })} />
+                <div className="grid grid-cols-3 gap-1.5 mt-1">
+                  <Select value={lastCheckupParts.month} onValueChange={v => handleLastCheckupChange('month', v)}>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Month" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={lastCheckupParts.day} onValueChange={v => handleLastCheckupChange('day', v)}>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Day" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {checkupDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={lastCheckupParts.year} onValueChange={v => handleLastCheckupChange('year', v)}>
+                    <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Year" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {checkupYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <Label>Other medical conditions</Label>
