@@ -22,8 +22,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     base: '/',
+    ssr: false,
     build: {
       outDir: 'dist',
+      target: ['es2020', 'edge89'],
+      minify: 'esbuild',
+      chunkSizeWarningLimit: 1000,
       rollupOptions: {
         output: {
           manualChunks: {
