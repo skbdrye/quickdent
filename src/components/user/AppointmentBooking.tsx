@@ -109,7 +109,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
 
   const handleBook = async () => {
     if (!selectedDate || !selectedTime || !user) {
-      toast({ title: 'Incomplete', description: 'Please select date and time', variant: 'destructive' });
+      toast({ title: 'Incomplete', description: 'Please select both a date and time slot', variant: 'destructive' });
       return;
     }
     setIsSubmitting(true);

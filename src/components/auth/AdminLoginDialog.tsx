@@ -24,7 +24,7 @@ export function AdminLoginDialog({ open, onOpenChange }: AdminLoginDialogProps) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) {
-      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
+      toast({ title: 'Missing Fields', description: 'Please enter both username and password', variant: 'destructive' });
       return;
     }
     setIsLoading(true);

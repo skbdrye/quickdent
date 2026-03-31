@@ -61,7 +61,12 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
     return appointments
       .filter(a => {
         const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
-        const matchesSearch = !searchQuery || a.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!searchQuery) return matchesStatus;
+        const q = searchQuery.toLowerCase();
+        const service = ((a as unknown as { service?: string }).service || '').toLowerCase();
+        const dateFormatted = new Date(a.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).toLowerCase();
+        const bookingType = a.is_group_booking ? 'companion group' : 'individual dental';
+        const matchesSearch = service.includes(q) || dateFormatted.includes(q) || a.status.toLowerCase().includes(q) || bookingType.includes(q) || a.appointment_time.includes(q);
         return matchesStatus && matchesSearch;
       })
       .sort((a, b) => {
@@ -139,7 +144,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
   const rescheduleApt = rescheduleId ? appointments.find(a => a.id === rescheduleId) : null;
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5 w-full max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-foreground">My Appointments</h1>
         <p className="text-sm text-muted-foreground">View, reschedule, or cancel your appointments</p>
@@ -148,7 +153,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
       {/* Booking Rules Reminder */}
       <div className="flex items-start gap-3 p-3 rounded-xl bg-secondary/5 border border-secondary/20">
         <Info className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
-        <div className="text-xs text-muted-foreground space-y-0.5">
+        <div className="text-xs text-foreground/75 space-y-0.5">
           <p>Cancellations & rescheduling must be at least <strong className="text-foreground">1 hour</strong> before your appointment.</p>
           <p>Rescheduling is allowed <strong className="text-foreground">1 time only</strong> per appointment.</p>
         </div>
@@ -158,7 +163,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search appointments..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input placeholder="Search by service, date, or status..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground shrink-0" />

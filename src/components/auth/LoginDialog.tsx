@@ -84,7 +84,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginPhone || !loginPassword) {
-      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Missing Fields', description: 'Please fill in all fields', variant: 'destructive', duration: 2500 });
       return;
     }
     setIsLoading(true);
@@ -114,29 +114,29 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regUsername || !regPhone || !regPassword || !regCountryCode) {
-      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Missing Fields', description: 'Please fill in all fields to register', variant: 'destructive', duration: 2500 });
       return;
     }
     if (!isUsernameOk) {
-      toast({ title: 'Error', description: 'Username does not meet the requirements', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Invalid Username', description: 'Username must be at least 6 characters (letters, numbers, underscore only)', variant: 'destructive', duration: 2500 });
       return;
     }
     if (!isPasswordOk) {
-      toast({ title: 'Error', description: 'Password does not meet the requirements', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Weak Password', description: 'Password must have 8+ chars, uppercase, lowercase, and a digit', variant: 'destructive', duration: 2500 });
       return;
     }
     const cleanPhone = regPhone.replace(/\s/g, '');
     if (regCountryCode === '+63') {
       if (cleanPhone.length !== 10) {
-        toast({ title: 'Error', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive', duration: 2500 });
+        toast({ title: 'Invalid Number', description: 'Philippine phone number must be exactly 10 digits (e.g. 9XXXXXXXXX)', variant: 'destructive', duration: 2500 });
         return;
       }
     } else if (!/^\d{7,15}$/.test(cleanPhone)) {
-      toast({ title: 'Error', description: 'Please enter a valid phone number', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Invalid Number', description: 'Please enter a valid phone number (7-15 digits)', variant: 'destructive', duration: 2500 });
       return;
     }
     if (!agreeTerms) {
-      toast({ title: 'Error', description: 'You must agree to the Terms & Conditions', variant: 'destructive', duration: 2500 });
+      toast({ title: 'Terms Required', description: 'Please agree to the Terms & Conditions to proceed', variant: 'destructive', duration: 2500 });
       return;
     }
 
@@ -184,7 +184,9 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader className="text-center items-center">
-          <div className="mx-auto w-12 h-12 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg mb-2">Q</div>
+          <div className="mx-auto w-12 h-12 rounded-xl overflow-hidden mb-2">
+            <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
+          </div>
           <DialogTitle>QuickDent</DialogTitle>
           <DialogDescription>Sign in or create an account to book appointments.</DialogDescription>
         </DialogHeader>

@@ -173,12 +173,12 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
     for (let i = 0; i < members.length; i++) {
       const m = members[i];
       if (!m.member_name || !m.date_of_birth || !m.gender || !m.appointment_time) {
-        toast({ title: 'Incomplete', description: `Please fill in all details for member ${i + 1} (including time)`, variant: 'destructive' });
+        toast({ title: 'Incomplete', description: `Please fill in all required details for member ${i + 1} (name, date of birth, gender, and time slot)`, variant: 'destructive' });
         setExpandedMember(i);
         return;
       }
       if (!m.med_consent) {
-        toast({ title: 'Consent required', description: `Member ${i + 1} needs to provide medical consent`, variant: 'destructive' });
+        toast({ title: 'Consent Missing', description: `Member ${i + 1} must check the medical consent box`, variant: 'destructive' });
         setExpandedMember(i);
         return;
       }

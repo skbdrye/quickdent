@@ -53,7 +53,7 @@ export function MobileBottomNav({ activePage, onNavigate }: MobileBottomNavProps
       )}
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-card/95 backdrop-blur-md border-t border-border/50 pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 md:hidden bg-sidebar backdrop-blur-md border-t border-sidebar-border pb-safe">
         <div className="flex items-center justify-around h-14 px-1">
           {primaryItems.map(({ page, icon: Icon, label }) => {
             const isActive = activePage === page;
@@ -63,14 +63,14 @@ export function MobileBottomNav({ activePage, onNavigate }: MobileBottomNavProps
                 onClick={() => { onNavigate(page); setMoreOpen(false); }}
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors',
-                  isActive ? 'text-secondary' : 'text-muted-foreground'
+                  isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/60'
                 )}
               >
-                <Icon className={cn('w-5 h-5', isActive && 'text-secondary')} />
-                <span className={cn('text-[10px] font-medium', isActive && 'text-secondary')}>
+                <Icon className={cn('w-5 h-5', isActive && 'text-sidebar-primary')} />
+                <span className={cn('text-[10px] font-medium', isActive && 'text-sidebar-primary')}>
                   {label}
                 </span>
-                {isActive && <span className="w-1 h-1 rounded-full bg-secondary" />}
+                {isActive && <span className="w-1 h-1 rounded-full bg-sidebar-primary" />}
               </button>
             );
           })}
@@ -78,12 +78,12 @@ export function MobileBottomNav({ activePage, onNavigate }: MobileBottomNavProps
             onClick={() => setMoreOpen(!moreOpen)}
             className={cn(
               'flex flex-col items-center justify-center gap-0.5 flex-1 py-1 rounded-lg transition-colors',
-              isMoreActive ? 'text-secondary' : 'text-muted-foreground'
+              isMoreActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/60'
             )}
           >
-            <MoreHorizontal className={cn('w-5 h-5', isMoreActive && 'text-secondary')} />
-            <span className={cn('text-[10px] font-medium', isMoreActive && 'text-secondary')}>More</span>
-            {isMoreActive && <span className="w-1 h-1 rounded-full bg-secondary" />}
+            <MoreHorizontal className={cn('w-5 h-5', isMoreActive && 'text-sidebar-primary')} />
+            <span className={cn('text-[10px] font-medium', isMoreActive && 'text-sidebar-primary')}>More</span>
+            {isMoreActive && <span className="w-1 h-1 rounded-full bg-sidebar-primary" />}
           </button>
         </div>
       </nav>

@@ -42,7 +42,7 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
   ];
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 w-full max-w-5xl mx-auto">
       {/* Welcome header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div>
@@ -63,7 +63,7 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
             </div>
             <div className="space-y-1.5">
               <p className="text-sm font-semibold text-foreground">Booking Rules</p>
-              <ul className="text-xs text-muted-foreground space-y-1">
+              <ul className="text-xs text-foreground/80 space-y-1">
                 <li className="flex items-start gap-1.5">
                   <span className="text-secondary mt-0.5">&#8226;</span>
                   <span>Cancellations must be made at least <strong className="text-foreground">1 hour</strong> before your appointment.</span>

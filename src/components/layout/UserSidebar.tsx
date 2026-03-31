@@ -35,8 +35,8 @@ export function UserSidebar({ activePage, onNavigate }: UserSidebarProps) {
       <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
         <div className="p-4 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-sidebar-accent flex items-center justify-center text-sidebar-accent-foreground font-bold text-sm">
-              Q
+            <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0">
+              <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
             </div>
             <div>
               <p className="font-semibold text-sm text-sidebar-primary">QuickDent</p>

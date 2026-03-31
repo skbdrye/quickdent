@@ -70,7 +70,7 @@ export default function UserSettings() {
     if (!phoneHasChanged) return;
 
     if (countryCode === '+63' && localNumber.length !== 10) {
-      toast({ title: 'Error', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive' });
+      toast({ title: 'Invalid Number', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive' });
       return;
     }
 
@@ -85,7 +85,7 @@ export default function UserSettings() {
       .maybeSingle();
 
     if (existing) {
-      toast({ title: 'Error', description: 'This phone number is already registered', variant: 'destructive' });
+      toast({ title: 'Already Taken', description: 'This phone number is already registered', variant: 'destructive' });
       setSavingPhone(false);
       return;
     }
@@ -113,11 +113,11 @@ export default function UserSettings() {
     if (!passwordHasChanges) return;
 
     if (newPassword !== confirmPassword) {
-      toast({ title: 'Error', description: 'Passwords do not match', variant: 'destructive' });
+      toast({ title: 'Mismatch', description: 'New passwords do not match', variant: 'destructive' });
       return;
     }
     if (!pwValid) {
-      toast({ title: 'Error', description: 'Password does not meet requirements', variant: 'destructive' });
+      toast({ title: 'Weak Password', description: 'Password does not meet the requirements above', variant: 'destructive' });
       return;
     }
 
@@ -137,7 +137,7 @@ export default function UserSettings() {
 
     const passwordMatch = await bcryptjs.compare(currentPassword, userData.password_hash);
     if (!passwordMatch) {
-      toast({ title: 'Error', description: 'Current password is incorrect', variant: 'destructive' });
+      toast({ title: 'Wrong Password', description: 'Current password is incorrect', variant: 'destructive' });
       setSavingPassword(false);
       return;
     }
@@ -161,7 +161,7 @@ export default function UserSettings() {
   }
 
   return (
-    <div className="space-y-6 max-w-lg">
+    <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground">Manage your account settings</p>

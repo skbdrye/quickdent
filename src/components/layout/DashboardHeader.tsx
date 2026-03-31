@@ -23,8 +23,8 @@ export function DashboardHeader({ title, onNavigateToAppointment, onNavigateToPr
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/80 backdrop-blur-md border-b border-border/50 md:pl-6">
       <div className="flex items-center gap-2 min-w-0">
-        <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-xs md:hidden shrink-0">
-          Q
+        <div className="w-7 h-7 rounded-lg overflow-hidden md:hidden shrink-0">
+          <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
         </div>
         <span className="text-sm font-semibold text-foreground md:hidden truncate">{title || 'QuickDent'}</span>
         <span className="hidden md:block text-sm font-medium text-foreground truncate">{title}</span>

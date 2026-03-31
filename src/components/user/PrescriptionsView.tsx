@@ -48,9 +48,9 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
   const [loading, setLoading] = useState(true);
   const [highlightingId, setHighlightingId] = useState<number | null>(null);
 
-  // Scroll to and highlight the prescription card for a specific appointment
+  // Scroll to and highlight the prescription card ONLY when triggered by notification (highlightKey > 0)
   useEffect(() => {
-    if (highlightAppointmentId && !loading && appointmentGroups.length > 0) {
+    if (highlightAppointmentId && highlightKey && highlightKey > 0 && !loading && appointmentGroups.length > 0) {
       setHighlightingId(highlightAppointmentId);
       setTimeout(() => {
         const el = document.getElementById(`rx-group-${highlightAppointmentId}`);
@@ -62,6 +62,8 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
         setHighlightingId(null);
       }, 3500);
       return () => clearTimeout(timer);
+    } else if (!highlightAppointmentId) {
+      setHighlightingId(null);
     }
   }, [highlightAppointmentId, highlightKey, loading, appointmentGroups]);
 
@@ -184,7 +186,7 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-foreground">My Prescriptions</h1>
         <p className="text-muted-foreground">View prescriptions from your dental visits</p>

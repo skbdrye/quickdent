@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -108,8 +108,14 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
 
   const handleSaveInfo = async () => {
     if (!user?.id) return;
-    if (!localProfile.first_name || !localProfile.last_name || !localProfile.date_of_birth || !localProfile.gender || !localProfile.phone) {
-      toast({ title: 'Error', description: 'Please fill all required fields', variant: 'destructive' });
+    const missingFields: string[] = [];
+    if (!localProfile.first_name) missingFields.push('First Name');
+    if (!localProfile.last_name) missingFields.push('Last Name');
+    if (!localProfile.date_of_birth) missingFields.push('Date of Birth');
+    if (!localProfile.gender) missingFields.push('Gender');
+    if (!localProfile.phone) missingFields.push('Mobile Number');
+    if (missingFields.length > 0) {
+      toast({ title: 'Missing Information', description: `Please fill in: ${missingFields.join(', ')}`, variant: 'destructive' });
       return;
     }
     setIsSaving(true);
@@ -136,14 +142,19 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
   const handleSubmitAssessment = async () => {
     if (!user?.id) return;
     const required: (keyof typeof localAssessment)[] = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+    const unanswered: string[] = [];
     for (const q of required) {
       if (!localAssessment[q]) {
-        toast({ title: 'Incomplete', description: 'Please answer all medical questions', variant: 'destructive' });
-        return;
+        const questionObj = questions.find(question => question.key === q);
+        unanswered.push(questionObj ? `Question ${questions.indexOf(questionObj) + 1}` : q);
       }
     }
+    if (unanswered.length > 0) {
+      toast({ title: 'Incomplete Assessment', description: `Please answer all medical questions (${unanswered.join(', ')} unanswered)`, variant: 'destructive' });
+      return;
+    }
     if (!localAssessment.consent) {
-      toast({ title: 'Consent required', description: 'Please acknowledge the consent', variant: 'destructive' });
+      toast({ title: 'Consent Required', description: 'Please check the consent box to proceed', variant: 'destructive' });
       return;
     }
     setIsSaving(true);
@@ -172,18 +183,55 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     { key: 'q6' as const, text: 'Are you currently pregnant or nursing?' },
   ];
 
-  const updateLocalProfile = (data: Partial<typeof localProfile>) => {
+  const updateLocalProfile = useCallback((data: Partial<typeof localProfile>) => {
     setLocalProfile(prev => ({ ...prev, ...data }));
-  };
+  }, []);
 
-  const updateLocalAssessment = (data: Partial<typeof localAssessment>) => {
+  const updateLocalAssessment = useCallback((data: Partial<typeof localAssessment>) => {
     setLocalAssessment(prev => ({ ...prev, ...data }));
-  };
+  }, []);
 
   const age = localProfile.date_of_birth ? calculateAge(localProfile.date_of_birth) : null;
 
+  // Date of birth select helpers
+  const dobParts = useMemo(() => {
+    if (!localProfile.date_of_birth) return { year: '', month: '', day: '' };
+    const [y, m, d] = localProfile.date_of_birth.split('-');
+    return { year: y || '', month: m || '', day: d || '' };
+  }, [localProfile.date_of_birth]);
+
+  const currentYear = new Date().getFullYear();
+  const years = useMemo(() => Array.from({ length: 120 }, (_, i) => String(currentYear - i)), [currentYear]);
+  const months = useMemo(() => [
+    { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
+    { value: '04', label: 'April' }, { value: '05', label: 'May' }, { value: '06', label: 'June' },
+    { value: '07', label: 'July' }, { value: '08', label: 'August' }, { value: '09', label: 'September' },
+    { value: '10', label: 'October' }, { value: '11', label: 'November' }, { value: '12', label: 'December' },
+  ], []);
+
+  const daysInMonth = useMemo(() => {
+    if (!dobParts.year || !dobParts.month) return 31;
+    return new Date(Number(dobParts.year), Number(dobParts.month), 0).getDate();
+  }, [dobParts.year, dobParts.month]);
+
+  const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, '0')), [daysInMonth]);
+
+  const handleDobChange = useCallback((part: 'year' | 'month' | 'day', value: string) => {
+    const newParts = { ...dobParts, [part]: value };
+    // Auto-fix day if it exceeds the new month's max
+    if (newParts.year && newParts.month) {
+      const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
+      if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
+    }
+    if (newParts.year && newParts.month && newParts.day) {
+      updateLocalProfile({ date_of_birth: `${newParts.year}-${newParts.month}-${newParts.day}` });
+    } else {
+      updateLocalProfile({ date_of_birth: '' });
+    }
+  }, [dobParts, updateLocalProfile]);
+
   return (
-    <div className="space-y-6 w-full max-w-2xl overflow-hidden">
+    <div className="space-y-6 w-full max-w-4xl overflow-hidden">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Patient Profile</h1>
         <p className="text-sm text-muted-foreground">Manage your personal and medical information</p>
@@ -226,9 +274,28 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
                 <Label>Middle Name</Label>
                 <Input value={localProfile.middle_name} onChange={e => updateLocalProfile({ middle_name: e.target.value.slice(0, 30) })} placeholder="Middle name" maxLength={30} className="w-full truncate" />
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <Label className="text-xs sm:text-sm">Date of Birth *</Label>
-                <Input type="date" value={localProfile.date_of_birth} onChange={e => updateLocalProfile({ date_of_birth: e.target.value })} className="text-sm" />
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <Select value={dobParts.month} onValueChange={v => handleDobChange('month', v)}>
+                    <SelectTrigger className="text-sm"><SelectValue placeholder="Month" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={dobParts.day} onValueChange={v => handleDobChange('day', v)}>
+                    <SelectTrigger className="text-sm"><SelectValue placeholder="Day" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {days.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={dobParts.year} onValueChange={v => handleDobChange('year', v)}>
+                    <SelectTrigger className="text-sm"><SelectValue placeholder="Year" /></SelectTrigger>
+                    <SelectContent className="max-h-48">
+                      {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {age !== null && <p className="text-xs text-muted-foreground mt-1">Age: {age} years old</p>}
               </div>
               <div>
