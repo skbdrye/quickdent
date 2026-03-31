@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, useTransition } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [tab, setTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
+  const [, startTransition] = useTransition();
 
   // Refresh remembered user when dialog opens
   useEffect(() => {
@@ -158,8 +159,8 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const handleUsernameChange = useCallback((val: string) => {
     // Only allow letters, digits, underscore
     const filtered = val.replace(/[^a-zA-Z0-9_]/g, '');
-    setRegUsername(filtered);
-  }, []);
+    startTransition(() => setRegUsername(filtered));
+  }, [startTransition]);
 
   // Memoize country code options to prevent re-rendering 200+ items on every keystroke
   const countryOptions = useMemo(() => (
@@ -278,7 +279,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   <Input
                     type={showRegPassword ? 'text' : 'password'}
                     value={regPassword}
-                    onChange={e => setRegPassword(e.target.value)}
+                    onChange={e => startTransition(() => setRegPassword(e.target.value))}
                     placeholder="Create a password"
                     className="pr-10"
                   />

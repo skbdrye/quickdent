@@ -209,7 +209,8 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       await notificationsAPI.notifyAdmins(
         'New Companion Booking',
         `${user.username} booked for ${members.length} member(s): ${members.map(m => m.member_name).join(', ')} on ${selectedDate}.`,
-        'new_booking'
+        'new_booking',
+        apt?.id
       );
       const bookedCount = members.length;
       const bookedDate = selectedDate;

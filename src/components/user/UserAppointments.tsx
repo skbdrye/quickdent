@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { CalendarDays, Clock, Users, RotateCcw, X, Search, Filter, Info } from 'lucide-react';
+import { CalendarDays, Clock, Users, RotateCcw, X, Search, Filter, Info, Stethoscope } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -209,6 +209,12 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                       <p className="font-semibold text-sm text-foreground">
                         {apt.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
+                      {apt.status === 'Confirmed' && (apt as unknown as { service?: string }).service && (
+                        <p className="text-xs text-secondary font-medium flex items-center gap-1 mt-0.5">
+                          <Stethoscope className="w-3 h-3" />
+                          Service: {(apt as unknown as { service?: string }).service}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                         <span className="flex items-center gap-1">
                           <CalendarDays className="w-3 h-3" />

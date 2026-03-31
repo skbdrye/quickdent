@@ -9,11 +9,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Filter, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2, Stethoscope } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { appointmentsAPI, notificationsAPI } from '@/lib/api';
+import { appointmentsAPI, notificationsAPI, servicesAPI } from '@/lib/api';
+import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
+import { SuccessModal } from '@/components/shared/SuccessModal';
 import { cn } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -33,6 +35,7 @@ interface Appointment {
   duration_min: number;
   created_at: string;
   reschedule_count?: number;
+  service?: string | null;
 }
 
 interface GroupMember {
@@ -107,6 +110,7 @@ function calculateAge(dob: string): number {
 
 export default function AppointmentManagement({ highlightAppointmentId, highlightKey }: { highlightAppointmentId?: number | null; highlightKey?: number }) {
   const { toast } = useToast();
+  const { services, fetchServices } = useClinicStore();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [memberMap, setMemberMap] = useState<Map<number, GroupMember[]>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
@@ -124,6 +128,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   const [adminCancelId, setAdminCancelId] = useState<number | null>(null);
   const [adminCancelReason, setAdminCancelReason] = useState('');
   const [highlightingId, setHighlightingId] = useState<number | null>(null);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -131,6 +136,8 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   const [prescribedBy, setPrescribedBy] = useState('Dr. Admin');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+
+  useEffect(() => { fetchServices(); }, [fetchServices]);
 
   const loadAppointments = useCallback(async () => {
     const { data } = await supabase
@@ -210,6 +217,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
     }
 
     toast({ title: 'Status Updated', description: `Appointment marked as ${status}` });
+    setSuccessModal({ open: true, title: 'Status Updated', description: `Appointment has been marked as ${status}.` });
     loadAppointments();
   }
 
@@ -228,6 +236,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
         });
       }
       toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${newTime}.` });
+      setSuccessModal({ open: true, title: 'Appointment Rescheduled', description: `Appointment has been moved to ${newDate} at ${newTime}.` });
       loadAppointments();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reschedule.';
@@ -330,6 +339,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
       });
 
       toast({ title: 'Success', description: 'Prescription saved successfully' });
+      setSuccessModal({ open: true, title: 'Prescription Uploaded', description: 'The prescription has been saved and the patient has been notified.' });
 
       const { data: updatedRx } = await supabase.from('prescriptions').select('*').eq('appointment_id', prescriptionTarget.appointmentId).order('prescription_date', { ascending: false });
       setPrescriptions((updatedRx || []) as unknown as Prescription[]);
@@ -484,6 +494,9 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                           {apt.is_group_booking && (
                             <p className="text-[11px] text-muted-foreground">Booked by {apt.patient_name}</p>
                           )}
+                          {apt.service && apt.status === 'Confirmed' && (
+                            <p className="text-[11px] text-secondary font-medium">Service: {apt.service}</p>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</TableCell>
@@ -592,6 +605,58 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                 </div>
               </div>
             </div>
+
+            {/* Service Selector - only for Confirmed status */}
+            {selectedAppointment?.status === 'Confirmed' && (
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center gap-2">
+                  <Stethoscope className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Assign Service</p>
+                </div>
+                <div className="p-4">
+                  <Select
+                    value={selectedAppointment.service || ''}
+                    onValueChange={async (value) => {
+                      try {
+                        await appointmentsAPI.updateService(selectedAppointment.id, value);
+                        setSelectedAppointment({ ...selectedAppointment, service: value });
+                        loadAppointments();
+                        toast({ title: 'Service Assigned', description: `Service set to "${value}"` });
+                      } catch {
+                        toast({ title: 'Error', description: 'Failed to assign service', variant: 'destructive' });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a service for this appointment..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {services.filter(s => s.is_active).map(s => (
+                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedAppointment.service && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Current service: <span className="font-medium text-foreground">{selectedAppointment.service}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Show assigned service for non-confirmed statuses */}
+            {selectedAppointment?.status !== 'Confirmed' && selectedAppointment?.service && (
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center gap-2">
+                  <Stethoscope className="w-3.5 h-3.5 text-muted-foreground" />
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Service</p>
+                </div>
+                <div className="p-4">
+                  <p className="text-sm font-medium text-foreground">{selectedAppointment.service}</p>
+                </div>
+              </div>
+            )}
 
             {/* Patient Profile (Individual) */}
             {!selectedAppointment?.is_group_booking && patientProfile && (
@@ -907,6 +972,14 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
         currentDate={rescheduleApt?.appointment_date || ''}
         currentTime={rescheduleApt?.appointment_time || ''}
         onReschedule={handleAdminReschedule}
+      />
+
+      {/* Admin Success Modal */}
+      <SuccessModal
+        open={successModal.open}
+        title={successModal.title}
+        description={successModal.description}
+        onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
       />
     </div>
   );

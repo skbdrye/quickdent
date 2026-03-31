@@ -300,6 +300,7 @@ export const appointmentsAPI = {
       is_group_booking: a.is_group_booking || false,
       cancelled_at: a.cancelled_at,
       created_at: a.created_at || '',
+      service: (a as Record<string, unknown>).service as string | null || null,
     }));
   },
 
@@ -323,6 +324,7 @@ export const appointmentsAPI = {
       is_group_booking: a.is_group_booking || false,
       cancelled_at: a.cancelled_at,
       created_at: a.created_at || '',
+      service: (a as Record<string, unknown>).service as string | null || null,
     }));
   },
 
@@ -380,6 +382,14 @@ export const appointmentsAPI = {
         await supabase.from('users').update(updates as any).eq('id', apt.user_id);
       }
     }
+  },
+
+  async updateService(id: number, service: string) {
+    const { error } = await (supabase as any)
+      .from('appointments')
+      .update({ service })
+      .eq('id', id);
+    if (error) throw error;
   },
 
   async reschedule(id: number, newDate: string, newTime: string, isAdmin: boolean = false) {

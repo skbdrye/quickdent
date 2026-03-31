@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/lib/store';
-import { FileText, Download, Eye, CalendarDays, Clock, Users, User } from 'lucide-react';
+import { FileText, Download, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
 
 interface Prescription {
   id: number;
@@ -29,6 +29,8 @@ interface AppointmentGroup {
   appointment_time: string;
   is_group_booking: boolean;
   patient_name: string;
+  service: string | null;
+  status?: string;
   prescriptions: GroupMemberPrescription[];
 }
 
@@ -97,14 +99,14 @@ export default function PrescriptionsView() {
       if (rx.appointment_id) aptIdSet.add(rx.appointment_id);
     });
 
-    const aptMap = new Map<number, { appointment_date: string; appointment_time: string; is_group_booking: boolean; patient_name: string }>();
+    const aptMap = new Map<number, { appointment_date: string; appointment_time: string; is_group_booking: boolean; patient_name: string; service: string | null }>();
     if (aptIdSet.size > 0) {
       const { data: apts } = await supabase
         .from('appointments')
         .select('id, appointment_date, appointment_time, is_group_booking, patient_name')
         .in('id', Array.from(aptIdSet));
       if (apts) {
-        apts.forEach((a) => aptMap.set(a.id, a));
+        apts.forEach((a) => aptMap.set(a.id, { ...a, service: (a as Record<string, unknown>).service as string | null || null }));
       }
     }
 
@@ -120,6 +122,7 @@ export default function PrescriptionsView() {
           appointment_time: apt?.appointment_time || '',
           is_group_booking: apt?.is_group_booking || false,
           patient_name: apt?.patient_name || user.username || '',
+          service: apt?.service || null,
           prescriptions: [],
         });
       }
@@ -193,6 +196,11 @@ export default function PrescriptionsView() {
                       <p className="font-semibold text-sm text-foreground">
                         {group.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
+                      {group.service && group.status === 'Confirmed' && (
+                        <p className="text-xs text-secondary font-medium mt-0.5">
+                          Service: {group.service}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                         <span className="flex items-center gap-1">
                           <CalendarDays className="w-3 h-3" />

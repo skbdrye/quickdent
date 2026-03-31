@@ -11,7 +11,7 @@ interface SuccessModalProps {
   autoDismissMs?: number;
 }
 
-export function SuccessModal({ open, title, description, onClose, autoDismissMs = 3000 }: SuccessModalProps) {
+export function SuccessModal({ open, title, description, onClose, autoDismissMs = 5000 }: SuccessModalProps) {
   useEffect(() => {
     if (!open) return;
     const timer = setTimeout(onClose, autoDismissMs);
@@ -21,9 +21,9 @@ export function SuccessModal({ open, title, description, onClose, autoDismissMs 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop with blur */}
-      <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed top-0 left-0 right-0 bottom-0 bg-foreground/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
       <div

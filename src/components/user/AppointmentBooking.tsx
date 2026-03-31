@@ -114,7 +114,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
     }
     setIsSubmitting(true);
     try {
-      await addAppointment({
+      const newApt = await addAppointment({
         user_id: user.id,
         patient_name: profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : user.username,
         appointment_date: selectedDate,
@@ -132,7 +132,8 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       await notificationsAPI.notifyAdmins(
         'New Appointment',
         `${patientName} booked an appointment on ${selectedDate} at ${selectedTime}.`,
-        'new_booking'
+        'new_booking',
+        newApt?.id
       );
       const bookedDate = selectedDate;
       const bookedTime = selectedTime;

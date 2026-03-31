@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ClipboardList, Search, ShieldBan, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { ClipboardList, Search, ShieldBan, ShieldCheck, AlertTriangle, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { banAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+import { SuccessModal } from '@/components/shared/SuccessModal';
 
 interface PatientProfileData {
   id: number;
@@ -88,6 +90,7 @@ export default function PatientList() {
   const [prescriptions, setPrescriptions] = useState<PrescriptionData[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [banAction, setBanAction] = useState<{ userId: string; action: 'ban' | 'unban'; name: string } | null>(null);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
 
   useEffect(() => {
     loadPatients();
@@ -151,10 +154,10 @@ export default function PatientList() {
     try {
       if (banAction.action === 'ban') {
         await banAPI.banUser(banAction.userId);
-        toast({ title: 'User Banned', description: `${banAction.name} has been banned from the system.` });
+        setSuccessModal({ open: true, title: 'User Banned', description: `${banAction.name} has been banned from the system.` });
       } else {
         await banAPI.unbanUser(banAction.userId);
-        toast({ title: 'User Unbanned', description: `${banAction.name} has been unbanned.` });
+        setSuccessModal({ open: true, title: 'User Unbanned', description: `${banAction.name} has been unbanned.` });
       }
       loadPatients();
     } catch {
@@ -282,8 +285,11 @@ export default function PatientList() {
       {/* Patient Details Dialog */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle>{selectedPatient?.first_name} {selectedPatient?.middle_name || ''} {selectedPatient?.last_name}</DialogTitle>
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" onClick={() => setShowDetails(false)}>
+              <X className="h-4 w-4" />
+            </Button>
           </DialogHeader>
           <div className="space-y-6">
             <div>
@@ -369,6 +375,13 @@ export default function PatientList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SuccessModal
+        open={successModal.open}
+        title={successModal.title}
+        description={successModal.description}
+        onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
+      />
     </div>
   );
 }

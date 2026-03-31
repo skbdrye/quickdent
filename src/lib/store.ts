@@ -77,6 +77,7 @@ interface AppointmentsState {
   deleteAppointment: (id: number) => Promise<void>;
   fetchBookedSlots: (date: string) => Promise<string[]>;
   rescheduleAppointment: (id: number, newDate: string, newTime: string, isAdmin?: boolean) => Promise<void>;
+  updateService: (id: number, service: string) => Promise<void>;
 }
 
 export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
@@ -132,6 +133,15 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     set({
       appointments: get().appointments.map(a =>
         a.id === id ? { ...a, appointment_date: newDate, appointment_time: newTime, reschedule_count: (a.reschedule_count || 0) + 1 } : a
+      ),
+    });
+  },
+
+  updateService: async (id: number, service: string) => {
+    await appointmentsAPI.updateService(id, service);
+    set({
+      appointments: get().appointments.map(a =>
+        a.id === id ? { ...a, service } : a
       ),
     });
   },

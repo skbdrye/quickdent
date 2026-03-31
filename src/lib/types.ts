@@ -59,6 +59,7 @@ export interface Appointment {
   rescheduled_at?: string | null;
   original_date?: string | null;
   original_time?: string | null;
+  service?: string | null;
 }
 
 export interface Notification {

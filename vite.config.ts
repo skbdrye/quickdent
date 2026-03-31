@@ -55,6 +55,7 @@ export default defineConfig(({ mode }) => {
               '@radix-ui/react-toggle',
               '@radix-ui/react-toggle-group',
             ],
+            'lucide': ['lucide-react'],
           },
         },
       },

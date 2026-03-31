@@ -27,7 +27,7 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
   const today = new Date().toISOString().split('T')[0];
 
   const { upcoming, pending, confirmed, completed } = useMemo(() => {
-    const upcoming = appointments.filter(a => a.appointment_date >= today && a.status !== 'Cancelled' && a.status !== 'Completed');
+    const upcoming = appointments.filter(a => a.appointment_date >= today && a.status !== 'Cancelled' && a.status !== 'Completed' && a.status !== 'No Show');
     const pending = appointments.filter(a => a.status === 'Pending');
     const confirmed = appointments.filter(a => a.status === 'Confirmed');
     const completed = appointments.filter(a => a.status === 'Completed');
@@ -122,6 +122,11 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
                       <p className="font-medium text-sm text-foreground truncate">
                         {apt.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
+                      {apt.service && apt.status === 'Confirmed' && (
+                        <p className="text-xs text-secondary font-medium">
+                          Service: {apt.service}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {apt.appointment_time}
                       </p>
