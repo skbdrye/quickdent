@@ -30,6 +30,7 @@ export default function UserDashboardPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<DashboardPage>('dashboard');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
+  const [highlightKey, setHighlightKey] = useState(0);
   const { fetchNotifications } = useNotificationsStore();
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
@@ -58,6 +59,7 @@ export default function UserDashboardPage() {
 
   const handleNavigateToAppointment = useCallback((appointmentId?: number | null) => {
     setHighlightAppointmentId(appointmentId || null);
+    setHighlightKey(k => k + 1);
     setActivePage('my-appointments');
   }, []);
 
@@ -67,6 +69,7 @@ export default function UserDashboardPage() {
 
   const handleNavigateToMyAppointments = useCallback((appointmentId?: number) => {
     setHighlightAppointmentId(appointmentId || null);
+    setHighlightKey(k => k + 1);
     setActivePage('my-appointments');
   }, []);
 
@@ -100,7 +103,7 @@ export default function UserDashboardPage() {
       case 'dashboard': return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;
       case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentBooking onNavigate={setActivePage} /></Suspense>;
       case 'group-booking': return <Suspense fallback={<PageLoader />}><GroupBooking onNavigate={setActivePage} /></Suspense>;
-      case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} />;
+      case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} />;
       case 'services': return <Suspense fallback={<PageLoader />}><ServicesDisplay /></Suspense>;
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView /></Suspense>;
       case 'profile': return <Suspense fallback={<PageLoader />}><PatientProfile onNavigate={setActivePage} /></Suspense>;

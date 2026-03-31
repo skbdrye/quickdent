@@ -21,9 +21,10 @@ import { cn } from '@/lib/utils';
 
 interface UserAppointmentsProps {
   highlightAppointmentId?: number | null;
+  highlightKey?: number;
 }
 
-export function UserAppointments({ highlightAppointmentId }: UserAppointmentsProps) {
+export function UserAppointments({ highlightAppointmentId, highlightKey }: UserAppointmentsProps) {
   const { user } = useAuthStore();
   const { appointments, fetchUserAppointments, updateStatus, rescheduleAppointment } = useAppointmentsStore();
   const { toast } = useToast();
@@ -33,26 +34,28 @@ export function UserAppointments({ highlightAppointmentId }: UserAppointmentsPro
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
+  const [highlightingId, setHighlightingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user?.id) fetchUserAppointments(user.id);
   }, [user?.id, fetchUserAppointments]);
 
-  // Scroll to highlighted appointment
+  // Scroll to highlighted appointment with re-trigger support via highlightKey
   useEffect(() => {
     if (highlightAppointmentId) {
+      setHighlightingId(highlightAppointmentId);
       setTimeout(() => {
         const el = document.getElementById(`apt-${highlightAppointmentId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('ring-2', 'ring-secondary', 'ring-offset-2');
-          setTimeout(() => {
-            el.classList.remove('ring-2', 'ring-secondary', 'ring-offset-2');
-          }, 3000);
         }
       }, 300);
+      const timer = setTimeout(() => {
+        setHighlightingId(null);
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-  }, [highlightAppointmentId]);
+  }, [highlightAppointmentId, highlightKey]);
 
   const filteredAppointments = useMemo(() => {
     return appointments
@@ -191,8 +194,8 @@ export function UserAppointments({ highlightAppointmentId }: UserAppointmentsPro
               key={apt.id}
               id={`apt-${apt.id}`}
               className={cn(
-                'border-border/50 overflow-hidden transition-all duration-300',
-                highlightAppointmentId === apt.id && 'ring-2 ring-secondary ring-offset-2'
+                'border-border/50 overflow-hidden transition-all duration-500',
+                highlightingId === apt.id && 'ring-2 ring-secondary ring-offset-2 shadow-md'
               )}
             >
               <CardContent className="p-4">

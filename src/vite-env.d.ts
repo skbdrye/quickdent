@@ -65,6 +65,16 @@ declare module 'recharts' {
 declare module '@/components/user/UserAppointments' {
   export interface UserAppointmentsProps {
     highlightAppointmentId?: number | null;
+    highlightKey?: number;
   }
   export function UserAppointments(props: UserAppointmentsProps): JSX.Element;
+}
+
+declare module '@/components/ui/badge' {
+  import React from 'react';
+  export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+    variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'noshow' | 'banned' | 'warning';
+  }
+  export const Badge: React.ForwardRefExoticComponent<BadgeProps & React.RefAttributes<HTMLDivElement>>;
+  export const badgeVariants: any;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -35,14 +35,14 @@ function validatePassword(val: string) {
   };
 }
 
-function ValidationItem({ ok, label }: { ok: boolean; label: string }) {
+const ValidationItem = memo(function ValidationItem({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div className={`flex items-center gap-1.5 text-xs ${ok ? 'text-success' : 'text-muted-foreground'}`}>
       {ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
       <span>{label}</span>
     </div>
   );
-}
+});
 
 export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const remembered = localStorage.getItem('qd_remember_user') || '';
@@ -155,11 +155,20 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   };
 
   // Username input handler - filter out disallowed special chars
-  const handleUsernameChange = (val: string) => {
+  const handleUsernameChange = useCallback((val: string) => {
     // Only allow letters, digits, underscore
     const filtered = val.replace(/[^a-zA-Z0-9_]/g, '');
     setRegUsername(filtered);
-  };
+  }, []);
+
+  // Memoize country code options to prevent re-rendering 200+ items on every keystroke
+  const countryOptions = useMemo(() => (
+    COUNTRY_CODES.map(c => (
+      <SelectItem key={`${c.code}-${c.flag}`} value={c.code}>
+        {c.flag} {c.name} ({c.code})
+      </SelectItem>
+    ))
+  ), []);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -244,11 +253,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                 <Select value={regCountryCode} onValueChange={setRegCountryCode}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {COUNTRY_CODES.map(c => (
-                      <SelectItem key={`${c.code}-${c.flag}`} value={c.code}>
-                        {c.flag} {c.name} ({c.code})
-                      </SelectItem>
-                    ))}
+                    {countryOptions}
                   </SelectContent>
                 </Select>
               </div>

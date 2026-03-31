@@ -298,3 +298,9 @@ section[id] {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Highlight pulse animation for notification-targeted appointments */
+@keyframes highlight-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--secondary) / 0.4); }
+  50% { box-shadow: 0 0 0 4px hsl(var(--secondary) / 0.15); }
+}
+

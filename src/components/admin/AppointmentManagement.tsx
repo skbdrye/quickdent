@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Filter, Upload, Image as ImageIcon, Loader2, Printer, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { appointmentsAPI, notificationsAPI } from '@/lib/api';
@@ -105,7 +105,7 @@ function calculateAge(dob: string): number {
   return age;
 }
 
-export default function AppointmentManagement({ highlightAppointmentId }: { highlightAppointmentId?: number | null }) {
+export default function AppointmentManagement({ highlightAppointmentId, highlightKey }: { highlightAppointmentId?: number | null; highlightKey?: number }) {
   const { toast } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [memberMap, setMemberMap] = useState<Map<number, GroupMember[]>>(new Map());
@@ -123,6 +123,7 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
   const [adminCancelId, setAdminCancelId] = useState<number | null>(null);
   const [adminCancelReason, setAdminCancelReason] = useState('');
+  const [highlightingId, setHighlightingId] = useState<number | null>(null);
 
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -176,21 +177,22 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
     return () => { supabase.removeChannel(channel); };
   }, [loadAppointments]);
 
-  // Scroll to highlighted appointment
+  // Scroll to & highlight appointment with proper re-trigger support
   useEffect(() => {
     if (highlightAppointmentId && appointments.length > 0) {
+      setHighlightingId(highlightAppointmentId);
       setTimeout(() => {
         const el = document.getElementById(`admin-apt-${highlightAppointmentId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('bg-secondary/10');
-          setTimeout(() => {
-            el.classList.remove('bg-secondary/10');
-          }, 3000);
         }
-      }, 500);
+      }, 300);
+      const timer = setTimeout(() => {
+        setHighlightingId(null);
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-  }, [highlightAppointmentId, appointments]);
+  }, [highlightAppointmentId, highlightKey, appointments]);
 
   async function updateStatus(id: number, status: string) {
     await appointmentsAPI.updateStatus(id, status as 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled' | 'No Show');
@@ -475,7 +477,7 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
                   filteredAppointments.map((apt) => {
                     const isDue = new Date() >= new Date(`${apt.appointment_date}T${apt.appointment_time}`);
                     return (
-                    <TableRow key={apt.id} id={`admin-apt-${apt.id}`} className={cn('transition-colors duration-500', highlightAppointmentId === apt.id && 'bg-secondary/10')}>
+                    <TableRow key={apt.id} id={`admin-apt-${apt.id}`} className={cn('transition-all duration-500', highlightingId === apt.id && 'bg-secondary/10 ring-2 ring-secondary/30 ring-inset')}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{getDisplayName(apt)}</p>
@@ -534,78 +536,158 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
         </CardContent>
       </Card>
 
-      {/* Patient Details Dialog */}
+      {/* Patient Details Dialog - Modernized */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedAppointment?.is_group_booking
-                ? `${(memberMap.get(selectedAppointment?.id || 0)?.length || 0) === 1 ? 'Companion' : 'Group'} Booking - Booked by ${selectedAppointment?.patient_name}`
-                : `Patient Details - ${selectedAppointment?.patient_name}`}
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+          {/* Dialog Header with gradient accent */}
+          <div className="sticky top-0 z-10 bg-card border-b border-border/50">
+            <DialogHeader className="p-5 pb-4">
+              <DialogTitle className="text-lg">
+                {selectedAppointment?.is_group_booking
+                  ? `${(memberMap.get(selectedAppointment?.id || 0)?.length || 0) === 1 ? 'Companion' : 'Group'} Booking`
+                  : 'Patient Details'}
+              </DialogTitle>
+              {selectedAppointment?.is_group_booking && (
+                <p className="text-sm text-muted-foreground mt-0.5">Booked by {selectedAppointment?.patient_name}</p>
+              )}
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-semibold text-foreground mb-2">Appointment Information</h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-muted-foreground">Date:</span> {selectedAppointment && new Date(selectedAppointment.appointment_date + 'T00:00:00').toLocaleDateString()}</div>
-                <div><span className="text-muted-foreground">Time:</span> {selectedAppointment?.appointment_time}</div>
-                <div><span className="text-muted-foreground">Status:</span> {selectedAppointment?.status}</div>
-                <div><span className="text-muted-foreground">Type:</span> {selectedAppointment?.is_group_booking ? (groupMembers.length === 1 ? 'Companion Booking' : 'Group Booking') : 'Individual'}</div>
-                {selectedAppointment?.contact && <div><span className="text-muted-foreground">Contact:</span> {selectedAppointment.contact}</div>}
-                {selectedAppointment?.notes && <div className="col-span-2"><span className="text-muted-foreground">Notes:</span> {selectedAppointment.notes}</div>}
+          <div className="p-5 pt-0 space-y-5">
+            {/* Appointment Info Card */}
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Appointment Details</p>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Date</span>
+                    <span className="font-medium text-foreground">{selectedAppointment && new Date(selectedAppointment.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Time</span>
+                    <span className="font-medium text-foreground">{selectedAppointment?.appointment_time}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Status</span>
+                    <span><Badge variant={getStatusVariant(selectedAppointment?.status || '') as "pending" | "confirmed" | "completed" | "cancelled" | "noshow"}>{selectedAppointment?.status}</Badge></span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Booking Type</span>
+                    <span className="font-medium text-foreground">{selectedAppointment?.is_group_booking ? (groupMembers.length === 1 ? 'Companion' : `Group (${groupMembers.length})`) : 'Individual'}</span>
+                  </div>
+                  {selectedAppointment?.contact && (
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Contact</span>
+                      <span className="font-medium text-foreground">{selectedAppointment.contact}</span>
+                    </div>
+                  )}
+                  {selectedAppointment?.notes && (
+                    <div className="flex flex-col col-span-2">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Notes</span>
+                      <span className="text-foreground">{selectedAppointment.notes}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* Patient Profile (Individual) */}
             {!selectedAppointment?.is_group_booking && patientProfile && (
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Patient Profile</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm bg-muted/50 p-3 rounded-lg">
-                  <div><span className="text-muted-foreground">Name:</span> {patientProfile.first_name} {patientProfile.middle_name || ''} {patientProfile.last_name}</div>
-                  <div><span className="text-muted-foreground">Gender:</span> {patientProfile.gender || 'N/A'}</div>
-                  {patientProfile.date_of_birth && (
-                    <>
-                      <div><span className="text-muted-foreground">Date of Birth:</span> {new Date(patientProfile.date_of_birth + 'T00:00:00').toLocaleDateString()}</div>
-                      <div><span className="text-muted-foreground">Age:</span> {calculateAge(patientProfile.date_of_birth)}</div>
-                    </>
-                  )}
-                  <div><span className="text-muted-foreground">Phone:</span> {patientProfile.phone || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Address:</span> {patientProfile.address || 'N/A'}</div>
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Patient Profile</p>
+                </div>
+                <div className="p-4">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Full Name</span>
+                      <span className="font-medium text-foreground">{patientProfile.first_name} {patientProfile.middle_name || ''} {patientProfile.last_name}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Gender</span>
+                      <span className="font-medium text-foreground">{patientProfile.gender || 'N/A'}</span>
+                    </div>
+                    {patientProfile.date_of_birth && (
+                      <>
+                        <div className="flex flex-col">
+                          <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Date of Birth</span>
+                          <span className="font-medium text-foreground">{new Date(patientProfile.date_of_birth + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Age</span>
+                          <span className="font-medium text-foreground">{calculateAge(patientProfile.date_of_birth)} years old</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Phone</span>
+                      <span className="font-medium text-foreground">{patientProfile.phone || 'N/A'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Address</span>
+                      <span className="font-medium text-foreground">{patientProfile.address || 'N/A'}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* Medical History (Individual) */}
             {!selectedAppointment?.is_group_booking && medicalAssessment && (
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">Medical History</h3>
-                <div className="space-y-2 text-sm bg-muted/50 p-3 rounded-lg">
-                  <div><span className="text-muted-foreground">Good health?</span> {medicalAssessment.q1 || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Under treatment?</span> {medicalAssessment.q2 || 'N/A'} {medicalAssessment.q2_details ? `- ${medicalAssessment.q2_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Medications?</span> {medicalAssessment.q3 || 'N/A'} {medicalAssessment.q3_details ? `- ${medicalAssessment.q3_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Hospitalized?</span> {medicalAssessment.q4 || 'N/A'} {medicalAssessment.q4_details ? `- ${medicalAssessment.q4_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Allergies?</span> {medicalAssessment.q5 || 'N/A'} {medicalAssessment.q5_details ? `- ${medicalAssessment.q5_details}` : ''}</div>
-                  <div><span className="text-muted-foreground">Pregnant/nursing?</span> {medicalAssessment.q6 || 'N/A'}</div>
-                  <div><span className="text-muted-foreground">Last checkup:</span> {medicalAssessment.last_checkup ? new Date(medicalAssessment.last_checkup + 'T00:00:00').toLocaleDateString() : 'N/A'}</div>
-                  {medicalAssessment.other_medical && <div><span className="text-muted-foreground">Other:</span> {medicalAssessment.other_medical}</div>}
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Medical History</p>
+                </div>
+                <div className="p-4 space-y-2.5 text-sm">
+                  {[
+                    { label: 'Good health?', val: medicalAssessment.q1 },
+                    { label: 'Under treatment?', val: medicalAssessment.q2, detail: medicalAssessment.q2_details },
+                    { label: 'Medications?', val: medicalAssessment.q3, detail: medicalAssessment.q3_details },
+                    { label: 'Hospitalized?', val: medicalAssessment.q4, detail: medicalAssessment.q4_details },
+                    { label: 'Allergies?', val: medicalAssessment.q5, detail: medicalAssessment.q5_details },
+                    { label: 'Pregnant/nursing?', val: medicalAssessment.q6 },
+                  ].map((q, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-muted-foreground min-w-[130px] shrink-0">{q.label}</span>
+                      <span className="font-medium text-foreground capitalize">{q.val || 'N/A'}</span>
+                      {q.detail && <span className="text-muted-foreground">— {q.detail}</span>}
+                    </div>
+                  ))}
+                  {medicalAssessment.last_checkup && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-muted-foreground min-w-[130px] shrink-0">Last checkup</span>
+                      <span className="font-medium text-foreground">{new Date(medicalAssessment.last_checkup + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                    </div>
+                  )}
+                  {medicalAssessment.other_medical && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-muted-foreground min-w-[130px] shrink-0">Other</span>
+                      <span className="font-medium text-foreground">{medicalAssessment.other_medical}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
+            {/* Group Members */}
             {selectedAppointment?.is_group_booking && groupMembers.length > 0 && (
-              <div>
-                <h3 className="font-semibold text-foreground mb-2">
-                  {groupMembers.length === 1 ? 'Companion' : `Group Members (${groupMembers.length})`}
-                </h3>
-                <div className="space-y-2">
+              <div className="rounded-xl border border-border/50 overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    {groupMembers.length === 1 ? 'Companion' : `Group Members (${groupMembers.length})`}
+                  </p>
+                </div>
+                <div className="divide-y divide-border/30">
                   {groupMembers.map((member) => {
                     const isExpanded = expandedGroupMember === member.id;
                     return (
-                      <div key={member.id} className="bg-muted/50 rounded-lg overflow-hidden border border-border/30">
-                        <button className="w-full p-3 flex items-center justify-between hover:bg-muted/80 transition-colors" onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}>
+                      <div key={member.id} className="overflow-hidden">
+                        <button className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors" onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}>
                           <div className="text-left">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground">{member.member_name}</span>
+                              <span className="font-medium text-foreground text-sm">{member.member_name}</span>
                               {member.is_primary && <Badge variant="outline" className="text-[10px]">Primary</Badge>}
                               {member.relationship && <span className="text-xs text-muted-foreground">({member.relationship})</span>}
                             </div>
@@ -619,18 +701,28 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
                         </button>
 
                         {isExpanded && (
-                          <div className="px-3 pb-3 border-t border-border/30 space-y-3">
-                            <div className="grid grid-cols-2 gap-2 text-sm pt-2">
-                              {member.date_of_birth && <div><span className="text-muted-foreground">DOB:</span> {new Date(member.date_of_birth + 'T00:00:00').toLocaleDateString()}</div>}
-                              {member.phone && <div><span className="text-muted-foreground">Phone:</span> {member.phone}</div>}
+                          <div className="px-4 pb-4 space-y-3 bg-muted/20">
+                            <div className="grid grid-cols-2 gap-3 text-sm pt-2">
+                              {member.date_of_birth && (
+                                <div className="flex flex-col">
+                                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Date of Birth</span>
+                                  <span className="font-medium text-foreground">{new Date(member.date_of_birth + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                                </div>
+                              )}
+                              {member.phone && (
+                                <div className="flex flex-col">
+                                  <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Phone</span>
+                                  <span className="font-medium text-foreground">{member.phone}</span>
+                                </div>
+                              )}
                             </div>
                             <div>
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Medical History</p>
+                              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Medical History</p>
                               {renderMemberMedical(member)}
                             </div>
                             {selectedAppointment?.status === 'Confirmed' && (
-                              <Button variant="outline" size="sm" className="gap-1" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
-                                <Upload className="h-3 w-3" /> Upload Prescription
+                              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
+                                <Upload className="h-3.5 w-3.5" /> Upload Prescription
                               </Button>
                             )}
                           </div>
@@ -642,42 +734,47 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
               </div>
             )}
 
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-foreground">Prescriptions</h3>
+            {/* Prescriptions Section */}
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Prescriptions</p>
                 {selectedAppointment && !selectedAppointment.is_group_booking && selectedAppointment.status === 'Confirmed' && (
-                  <Button variant="outline" size="sm" className="gap-1" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
-                    <Upload className="h-3 w-3" /> Upload Prescription
+                  <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
+                    <Upload className="h-3 w-3" /> Upload
                   </Button>
                 )}
               </div>
-              {prescriptions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No prescriptions yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {prescriptions.map((rx) => {
-                    const memberName = rx.group_member_id ? groupMembers.find(m => m.id === rx.group_member_id)?.member_name : undefined;
-                    return (
-                      <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <span className="font-medium text-foreground">{rx.prescribed_by}</span>
-                            {memberName && <span className="text-xs text-muted-foreground ml-2">(For: {memberName})</span>}
+              <div className="p-4">
+                {prescriptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No prescriptions yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {prescriptions.map((rx) => {
+                      const memberName = rx.group_member_id ? groupMembers.find(m => m.id === rx.group_member_id)?.member_name : undefined;
+                      return (
+                        <div key={rx.id} className="bg-muted/30 rounded-lg overflow-hidden border border-border/30">
+                          <div className="p-3 flex justify-between items-center">
+                            <div>
+                              <span className="font-medium text-sm text-foreground">{rx.prescribed_by}</span>
+                              {memberName && <Badge variant="outline" className="text-[10px] ml-2">For: {memberName}</Badge>}
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </div>
-                          <span className="text-muted-foreground text-xs">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
+                          {rx.image_url && (
+                            <div className="cursor-pointer border-t border-border/30 hover:opacity-90 transition-opacity" onClick={() => setViewingImage(rx.image_url)}>
+                              <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
+                              <p className="text-center py-1.5 text-[11px] text-muted-foreground bg-muted/20">Click to view full size</p>
+                            </div>
+                          )}
+                          {!rx.image_url && rx.medications && (
+                            <div className="px-3 pb-3 text-sm text-muted-foreground border-t border-border/30 pt-2">{rx.medications}</div>
+                          )}
                         </div>
-                        {rx.image_url && (
-                          <div className="mt-2 cursor-pointer rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors" onClick={() => setViewingImage(rx.image_url)}>
-                            <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-card" />
-                            <div className="text-center py-1 text-xs text-muted-foreground bg-muted/30">Click to view full size</div>
-                          </div>
-                        )}
-                        {!rx.image_url && rx.medications && <div><span className="text-muted-foreground">Note:</span> {rx.medications}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </DialogContent>
@@ -726,18 +823,34 @@ export default function AppointmentManagement({ highlightAppointmentId }: { high
         </DialogContent>
       </Dialog>
 
-      {/* Full Image Viewer */}
+      {/* Full Image Viewer - No print button */}
       <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
         <DialogContent className="max-w-4xl p-2">
           <DialogHeader className="pb-2">
             <DialogTitle className="flex items-center justify-between">
               <span>Prescription Image</span>
-              <Button variant="outline" size="sm" className="gap-1" onClick={() => { if (viewingImage) { const w = window.open(viewingImage, '_blank'); if (w) w.onload = () => w.print(); } }}>
-                <Printer className="h-3 w-3" /> Print
+              <Button variant="outline" size="sm" className="gap-1 mr-6" onClick={async () => {
+                if (!viewingImage) return;
+                try {
+                  const response = await fetch(viewingImage);
+                  const blob = await response.blob();
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `prescription.${blob.type.split('/')[1] || 'jpg'}`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                } catch {
+                  window.open(viewingImage, '_blank');
+                }
+              }}>
+                <Download className="h-3 w-3" /> Save
               </Button>
             </DialogTitle>
           </DialogHeader>
-          {viewingImage && <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-card max-h-[70vh]" />}
+          {viewingImage && <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />}
         </DialogContent>
       </Dialog>
 

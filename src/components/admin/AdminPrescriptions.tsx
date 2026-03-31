@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Search, Eye, Printer, ZoomIn } from 'lucide-react';
+import { FileText, Search, Eye, Download } from 'lucide-react';
 
 interface PrescriptionRow {
   id: number;
@@ -188,7 +188,7 @@ export default function AdminPrescriptions() {
         </Card>
       )}
 
-      {/* Full Image Viewer */}
+      {/* Full Image Viewer - No print button */}
       <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
         <DialogContent className="max-w-4xl p-2">
           <DialogHeader className="pb-2">
@@ -197,25 +197,26 @@ export default function AdminPrescriptions() {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1"
-                onClick={() => {
-                  if (viewingImage) {
-                    const w = window.open('', '_blank');
-                    if (w) {
-                      w.document.write(`
-                        <html><head><title>Print Prescription</title>
-                        <style>body{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fff;}
-                        img{max-width:100%;max-height:100vh;object-fit:contain;}
-                        </style></head><body>
-                        <img src="${viewingImage}" onload="window.print();window.close();" />
-                        </body></html>
-                      `);
-                      w.document.close();
-                    }
+                className="gap-1 mr-6"
+                onClick={async () => {
+                  if (!viewingImage) return;
+                  try {
+                    const response = await fetch(viewingImage);
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `prescription.${blob.type.split('/')[1] || 'jpg'}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                  } catch {
+                    window.open(viewingImage, '_blank');
                   }
                 }}
               >
-                <Printer className="h-3 w-3" /> Print
+                <Download className="h-3 w-3" /> Save
               </Button>
             </DialogTitle>
           </DialogHeader>

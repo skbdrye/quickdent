@@ -26,6 +26,7 @@ export default function AdminDashboardPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const [activePage, setActivePage] = useState<AdminPage>('dashboard');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
+  const [highlightKey, setHighlightKey] = useState(0);
   const { fetchNotifications } = useNotificationsStore();
   const navigate = useNavigate();
 
@@ -45,6 +46,7 @@ export default function AdminDashboardPage() {
 
   const handleNavigateToAppointment = useCallback((appointmentId?: number | null) => {
     setHighlightAppointmentId(appointmentId || null);
+    setHighlightKey(k => k + 1);
     setActivePage('appointments');
   }, []);
 
@@ -74,7 +76,7 @@ export default function AdminDashboardPage() {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <AdminDashboard onNavigate={setActivePage} />;
-      case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentManagement highlightAppointmentId={highlightAppointmentId} /></Suspense>;
+      case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentManagement highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} /></Suspense>;
       case 'patients': return <Suspense fallback={<PageLoader />}><PatientList /></Suspense>;
       case 'schedule': return <Suspense fallback={<PageLoader />}><ClinicSchedule /></Suspense>;
       case 'services': return <Suspense fallback={<PageLoader />}><ServiceManagement /></Suspense>;

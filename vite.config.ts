@@ -29,9 +29,11 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'supabase': ['@supabase/supabase-js'],
-            'ui-vendor': ['framer-motion', 'date-fns', 'recharts', 'sonner'],
+            'ui-motion': ['framer-motion'],
+            'ui-charts': ['recharts'],
+            'ui-utils': ['date-fns', 'sonner', 'class-variance-authority', 'clsx', 'tailwind-merge', 'zustand'],
             'crypto': ['bcryptjs'],
-            'radix': [
+            'radix-core': [
               '@radix-ui/react-dialog',
               '@radix-ui/react-select',
               '@radix-ui/react-tabs',
@@ -39,6 +41,10 @@ export default defineConfig(({ mode }) => {
               '@radix-ui/react-popover',
               '@radix-ui/react-scroll-area',
               '@radix-ui/react-alert-dialog',
+              '@radix-ui/react-slot',
+              '@radix-ui/react-label',
+            ],
+            'radix-ext': [
               '@radix-ui/react-dropdown-menu',
               '@radix-ui/react-checkbox',
               '@radix-ui/react-radio-group',
@@ -46,8 +52,6 @@ export default defineConfig(({ mode }) => {
               '@radix-ui/react-separator',
               '@radix-ui/react-accordion',
               '@radix-ui/react-progress',
-              '@radix-ui/react-label',
-              '@radix-ui/react-slot',
               '@radix-ui/react-toggle',
               '@radix-ui/react-toggle-group',
             ],

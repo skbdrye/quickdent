@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,10 +74,13 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     }
   }, [profile]);
 
+  // Track the initial assessment values to detect changes
+  const initialAssessmentRef = useRef<string>('');
+
   // Sync local state when assessment loads from server
   useEffect(() => {
     if (assessment) {
-      setLocalAssessment({
+      const newAssessment = {
         q1: assessment.q1 || '',
         q2: assessment.q2 || '',
         q2_details: assessment.q2_details || '',
@@ -91,9 +94,17 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
         last_checkup: assessment.last_checkup || '',
         other_medical: assessment.other_medical || '',
         consent: assessment.consent || false,
-      });
+      };
+      setLocalAssessment(newAssessment);
+      initialAssessmentRef.current = JSON.stringify(newAssessment);
     }
   }, [assessment]);
+
+  // Detect if assessment has changed from initial loaded state
+  const hasAssessmentChanged = useMemo(() => {
+    if (!initialAssessmentRef.current) return true; // First time submit - always allow
+    return JSON.stringify(localAssessment) !== initialAssessmentRef.current;
+  }, [localAssessment]);
 
   const handleSaveInfo = async () => {
     if (!user?.id) return;
@@ -139,6 +150,8 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     try {
       await updateAssessment(user.id, { ...localAssessment, is_submitted: true });
       await submitAssessment(user.id);
+      // Update the initial snapshot so "Update Assessment" becomes disabled again until new changes
+      initialAssessmentRef.current = JSON.stringify(localAssessment);
       toast({ title: 'Assessment saved', description: 'Your medical assessment has been updated successfully.' });
       // Navigate back to dashboard after successful submission
       if (onNavigate) {
@@ -305,7 +318,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
               <Button variant="outline" onClick={() => setStep('info')} className="gap-2">
                 <ChevronLeft className="w-4 h-4" /> Back to Info
               </Button>
-              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isSaving}>
+              <Button onClick={handleSubmitAssessment} className="flex-1 gap-2" disabled={isSaving || (isAssessmentSubmitted() && !hasAssessmentChanged)}>
                 {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> :
                   <><Save className="w-4 h-4" /> {isAssessmentSubmitted() ? 'Update Assessment' : 'Submit Assessment'}</>}
               </Button>
