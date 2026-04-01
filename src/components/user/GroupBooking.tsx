@@ -15,6 +15,20 @@ import { SuccessModal } from '@/components/shared/SuccessModal';
 
 const RELATIONSHIPS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend'];
 
+const DOB_MONTHS = [
+  { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
+  { value: '04', label: 'April' }, { value: '05', label: 'May' }, { value: '06', label: 'June' },
+  { value: '07', label: 'July' }, { value: '08', label: 'August' }, { value: '09', label: 'September' },
+  { value: '10', label: 'October' }, { value: '11', label: 'November' }, { value: '12', label: 'December' },
+];
+const CURRENT_YEAR = new Date().getFullYear();
+const DOB_YEARS = Array.from({ length: 120 }, (_, i) => String(CURRENT_YEAR - i));
+
+function getDobDays(year: string, month: string) {
+  const maxDay = (year && month) ? new Date(Number(year), Number(month), 0).getDate() : 31;
+  return Array.from({ length: maxDay }, (_, i) => String(i + 1).padStart(2, '0'));
+}
+
 function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
   const slots: { label: string; value: string; available: boolean }[] = [];
   if (!scheduleDay || !scheduleDay.is_open) return slots;
@@ -64,6 +78,44 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   const [successModal, setSuccessModal] = useState<{ open: boolean; count: number; date: string }>({ open: false, count: 0, date: '' });
   const membersCardRef = useRef<HTMLDivElement>(null);
 
+  // Per-member DOB parts so partial selection persists
+  const [memberDobParts, setMemberDobParts] = useState<{ year: string; month: string; day: string }[]>([{ year: '', month: '', day: '' }]);
+
+  // Keep memberDobParts in sync with members array length
+  useEffect(() => {
+    setMemberDobParts(prev => {
+      const next = members.map((m, i) => {
+        if (m.date_of_birth && (!prev[i] || prev[i].year === '')) {
+          const [y, mo, d] = m.date_of_birth.split('-');
+          return { year: y || '', month: mo || '', day: d || '' };
+        }
+        return prev[i] || { year: '', month: '', day: '' };
+      });
+      return next;
+    });
+  }, [members.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleMemberDobChange = useCallback((memberIndex: number, part: 'year' | 'month' | 'day', value: string) => {
+    setMemberDobParts(prev => {
+      const next = [...prev];
+      const current = next[memberIndex] || { year: '', month: '', day: '' };
+      const newParts = { ...current, [part]: value };
+      // Auto-fix day if it exceeds the new month's max
+      if (newParts.year && newParts.month) {
+        const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
+        if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
+      }
+      next[memberIndex] = newParts;
+      // Update the member's date_of_birth when all 3 parts are selected
+      if (newParts.year && newParts.month && newParts.day) {
+        setMembers(prevMembers => prevMembers.map((m, i) =>
+          i === memberIndex ? { ...m, date_of_birth: `${newParts.year}-${newParts.month}-${newParts.day}` } : m
+        ));
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (user?.id) { fetchProfile(user.id); fetchAssessment(user.id); }
     fetchSchedule();
@@ -97,7 +149,14 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       };
       setMembers(prev => {
         const filtered = prev.filter(m => m.relationship !== 'Self');
-        return [selfMember, ...filtered];
+        const result = [selfMember, ...filtered];
+        // Sync DOB parts for the self member
+        const selfDob = selfMember.date_of_birth ? selfMember.date_of_birth.split('-') : ['', '', ''];
+        setMemberDobParts(prevParts => {
+          const filteredParts = prevParts.slice(prev.findIndex(m => m.relationship !== 'Self') === -1 ? prevParts.length : 0);
+          return [{ year: selfDob[0] || '', month: selfDob[1] || '', day: selfDob[2] || '' }, ...filteredParts.slice(0, filtered.length)];
+        });
+        return result;
       });
     } else {
       setMembers(prev => prev.filter(m => m.relationship !== 'Self'));
@@ -138,6 +197,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       return;
     }
     setMembers(prev => [...prev, emptyMember()]);
+    setMemberDobParts(prev => [...prev, { year: '', month: '', day: '' }]);
     setExpandedMember(members.length);
   };
 
@@ -147,6 +207,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       return;
     }
     setMembers(prev => prev.filter((_, i) => i !== index));
+    setMemberDobParts(prev => prev.filter((_, i) => i !== index));
   };
 
   const profileReady = isProfileComplete() && isAssessmentSubmitted();
@@ -215,6 +276,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       const bookedCount = members.length;
       const bookedDate = selectedDate;
       setMembers([emptyMember()]);
+      setMemberDobParts([{ year: '', month: '', day: '' }]);
       setIncludeSelf(false);
       setSelectedDate(null);
       setSuccessModal({ open: true, count: bookedCount, date: bookedDate });
@@ -304,7 +366,26 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                       </div>
                       <div>
                         <Label className="text-xs">Date of Birth *</Label>
-                        <Input type="date" value={member.date_of_birth} onChange={e => updateMember(i, { date_of_birth: e.target.value })} disabled={isSelf} className="h-9" />
+                        <div className="grid grid-cols-3 gap-1.5 mt-1">
+                          <Select value={memberDobParts[i]?.month || ''} onValueChange={v => handleMemberDobChange(i, 'month', v)} disabled={isSelf}>
+                            <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Month" /></SelectTrigger>
+                            <SelectContent className="max-h-48">
+                              {DOB_MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select value={memberDobParts[i]?.day || ''} onValueChange={v => handleMemberDobChange(i, 'day', v)} disabled={isSelf}>
+                            <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Day" /></SelectTrigger>
+                            <SelectContent className="max-h-48">
+                              {getDobDays(memberDobParts[i]?.year || '', memberDobParts[i]?.month || '').map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select value={memberDobParts[i]?.year || ''} onValueChange={v => handleMemberDobChange(i, 'year', v)} disabled={isSelf}>
+                            <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Year" /></SelectTrigger>
+                            <SelectContent className="max-h-48">
+                              {DOB_YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                       <div>
                         <Label className="text-xs">Gender *</Label>

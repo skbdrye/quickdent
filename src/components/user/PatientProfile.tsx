@@ -193,11 +193,15 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
 
   const age = localProfile.date_of_birth ? calculateAge(localProfile.date_of_birth) : null;
 
-  // Date of birth select helpers
-  const dobParts = useMemo(() => {
-    if (!localProfile.date_of_birth) return { year: '', month: '', day: '' };
-    const [y, m, d] = localProfile.date_of_birth.split('-');
-    return { year: y || '', month: m || '', day: d || '' };
+  // Date of birth select helpers - use independent state so partial selections persist
+  const [dobParts, setDobParts] = useState<{ year: string; month: string; day: string }>({ year: '', month: '', day: '' });
+
+  // Sync dobParts when localProfile.date_of_birth loads from server
+  useEffect(() => {
+    if (localProfile.date_of_birth) {
+      const [y, m, d] = localProfile.date_of_birth.split('-');
+      setDobParts({ year: y || '', month: m || '', day: d || '' });
+    }
   }, [localProfile.date_of_birth]);
 
   const currentYear = new Date().getFullYear();
@@ -217,46 +221,44 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
   const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, '0')), [daysInMonth]);
 
   const handleDobChange = useCallback((part: 'year' | 'month' | 'day', value: string) => {
-    const newParts = { ...dobParts, [part]: value };
-    // Auto-fix day if it exceeds the new month's max
-    if (newParts.year && newParts.month) {
-      const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
-      if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
-    }
-    if (newParts.year && newParts.month && newParts.day) {
-      updateLocalProfile({ date_of_birth: `${newParts.year}-${newParts.month}-${newParts.day}` });
-    } else {
-      updateLocalProfile({ date_of_birth: '' });
-    }
-  }, [dobParts, updateLocalProfile]);
+    setDobParts(prev => {
+      const newParts = { ...prev, [part]: value };
+      // Auto-fix day if it exceeds the new month's max
+      if (newParts.year && newParts.month) {
+        const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
+        if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
+      }
+      // Only update the full date_of_birth when all 3 parts are selected
+      if (newParts.year && newParts.month && newParts.day) {
+        updateLocalProfile({ date_of_birth: `${newParts.year}-${newParts.month}-${newParts.day}` });
+      }
+      return newParts;
+    });
+  }, [updateLocalProfile]);
 
-  // Last checkup date select helpers
-  const lastCheckupParts = useMemo(() => {
-    if (!localAssessment.last_checkup) return { year: '', month: '', day: '' };
-    const [y, m, d] = localAssessment.last_checkup.split('-');
-    return { year: y || '', month: m || '', day: d || '' };
+  // Last checkup date select helpers - same pattern as DOB
+  const [checkupParts, setCheckupParts] = useState<{ year: string; month: string; day: string }>({ year: '', month: '', day: '' });
+
+  useEffect(() => {
+    if (localAssessment.last_checkup) {
+      const [y, m, d] = localAssessment.last_checkup.split('-');
+      setCheckupParts({ year: y || '', month: m || '', day: d || '' });
+    }
   }, [localAssessment.last_checkup]);
 
-  const checkupYears = useMemo(() => Array.from({ length: 50 }, (_, i) => String(currentYear - i)), [currentYear]);
-  const checkupDaysInMonth = useMemo(() => {
-    if (!lastCheckupParts.year || !lastCheckupParts.month) return 31;
-    return new Date(Number(lastCheckupParts.year), Number(lastCheckupParts.month), 0).getDate();
-  }, [lastCheckupParts.year, lastCheckupParts.month]);
-  const checkupDays = useMemo(() => Array.from({ length: checkupDaysInMonth }, (_, i) => String(i + 1).padStart(2, '0')), [checkupDaysInMonth]);
-
-  const handleLastCheckupChange = useCallback((part: 'year' | 'month' | 'day', value: string) => {
-    const newParts = { ...lastCheckupParts, [part]: value };
-    // Auto-fix day if it exceeds the new month's max
-    if (newParts.year && newParts.month) {
-      const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
-      if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
-    }
-    if (newParts.year && newParts.month && newParts.day) {
-      updateLocalAssessment({ last_checkup: `${newParts.year}-${newParts.month}-${newParts.day}` });
-    } else {
-      updateLocalAssessment({ last_checkup: '' });
-    }
-  }, [lastCheckupParts, updateLocalAssessment]);
+  const handleCheckupChange = useCallback((part: 'year' | 'month' | 'day', value: string) => {
+    setCheckupParts(prev => {
+      const newParts = { ...prev, [part]: value };
+      if (newParts.year && newParts.month) {
+        const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
+        if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
+      }
+      if (newParts.year && newParts.month && newParts.day) {
+        updateLocalAssessment({ last_checkup: `${newParts.year}-${newParts.month}-${newParts.day}` });
+      }
+      return newParts;
+    });
+  }, [updateLocalAssessment]);
 
   return (
     <div className="space-y-6 w-full max-w-4xl overflow-hidden">
@@ -391,22 +393,22 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
               <div>
                 <Label>Date of last medical check-up</Label>
                 <div className="grid grid-cols-3 gap-1.5 mt-1">
-                  <Select value={lastCheckupParts.month} onValueChange={v => handleLastCheckupChange('month', v)}>
+                  <Select value={checkupParts.month} onValueChange={v => handleCheckupChange('month', v)}>
                     <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Month" /></SelectTrigger>
                     <SelectContent className="max-h-48">
                       {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={lastCheckupParts.day} onValueChange={v => handleLastCheckupChange('day', v)}>
+                  <Select value={checkupParts.day} onValueChange={v => handleCheckupChange('day', v)}>
                     <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Day" /></SelectTrigger>
                     <SelectContent className="max-h-48">
-                      {checkupDays.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                      {days.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={lastCheckupParts.year} onValueChange={v => handleLastCheckupChange('year', v)}>
+                  <Select value={checkupParts.year} onValueChange={v => handleCheckupChange('year', v)}>
                     <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Year" /></SelectTrigger>
                     <SelectContent className="max-h-48">
-                      {checkupYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                      {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
