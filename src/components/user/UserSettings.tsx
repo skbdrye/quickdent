@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Lock, Phone, Loader2, LogOut, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import bcryptjs from 'bcryptjs';
+import { OtpVerification } from '@/components/auth/OtpVerification';
+import { SuccessModal } from '@/components/shared/SuccessModal';
 
 export default function UserSettings() {
   const { toast } = useToast();
@@ -37,6 +39,9 @@ export default function UserSettings() {
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [showPhoneOtp, setShowPhoneOtp] = useState(false);
+  const [pendingPhone, setPendingPhone] = useState('');
+  const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
 
   const phoneHasChanged = useMemo(() => {
     return localNumber !== originalLocalNumber;
@@ -65,7 +70,7 @@ export default function UserSettings() {
 
   const pwValid = pwChecks.length && pwChecks.upper && pwChecks.lower && pwChecks.digit;
 
-  async function updatePhone() {
+  async function initiatePhoneUpdate() {
     if (!user || !localNumber.trim()) return;
     if (!phoneHasChanged) return;
 
@@ -74,7 +79,6 @@ export default function UserSettings() {
       return;
     }
 
-    setSavingPhone(true);
     const fullPhone = `${countryCode}${localNumber}`;
 
     const { data: existing } = await supabase
@@ -86,26 +90,40 @@ export default function UserSettings() {
 
     if (existing) {
       toast({ title: 'Already Taken', description: 'This phone number is already registered', variant: 'destructive' });
-      setSavingPhone(false);
       return;
     }
 
+    // Show OTP verification
+    setPendingPhone(fullPhone);
+    setShowPhoneOtp(true);
+  }
+
+  async function completePhoneUpdate() {
+    if (!user || !pendingPhone) return;
+    setShowPhoneOtp(false);
+    setSavingPhone(true);
+
     const { error } = await supabase
       .from('users')
-      .update({ phone: fullPhone })
+      .update({ phone: pendingPhone })
       .eq('id', user.id);
 
     if (error) {
       toast({ title: 'Error', description: 'Failed to update phone', variant: 'destructive' });
     } else {
-      setUser({ ...user, phone: fullPhone });
+      setUser({ ...user, phone: pendingPhone });
       await supabase
         .from('patient_profiles')
-        .update({ phone: fullPhone })
+        .update({ phone: pendingPhone })
         .eq('user_id', user.id);
-      toast({ title: 'Updated', description: 'Phone number updated successfully' });
+      setSuccessModal({
+        open: true,
+        title: 'Phone Updated',
+        description: 'Your phone number has been verified and updated successfully.',
+      });
     }
     setSavingPhone(false);
+    setPendingPhone('');
   }
 
   async function updatePassword() {
@@ -195,7 +213,7 @@ export default function UserSettings() {
                 : `Enter your phone number (${localNumber.length} digits)`}
             </p>
           </div>
-          <Button onClick={updatePhone} disabled={savingPhone || !phoneHasChanged}>
+          <Button onClick={initiatePhoneUpdate} disabled={savingPhone || !phoneHasChanged}>
             {savingPhone ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : 'Update Phone'}
           </Button>
         </CardContent>
@@ -283,6 +301,22 @@ export default function UserSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* OTP Verification for Phone Change */}
+      <OtpVerification
+        open={showPhoneOtp}
+        onOpenChange={(open) => { setShowPhoneOtp(open); if (!open) setPendingPhone(''); }}
+        phone={pendingPhone}
+        onVerified={completePhoneUpdate}
+      />
+
+      {/* Success Modal */}
+      <SuccessModal
+        open={successModal.open}
+        title={successModal.title}
+        description={successModal.description}
+        onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
+      />
     </div>
   );
 }

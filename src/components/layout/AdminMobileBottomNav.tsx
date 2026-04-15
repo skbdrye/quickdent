@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarCheck, Users, MoreHorizontal, Clock, Stethoscope, FileText } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, Users, MoreHorizontal, Clock, Stethoscope, FileText, Image, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AdminPage } from '@/lib/types';
 import { useState } from 'react';
@@ -16,6 +16,8 @@ const primaryItems: { page: AdminPage; icon: typeof LayoutDashboard; label: stri
 
 const moreItems: { page: AdminPage; icon: typeof LayoutDashboard; label: string }[] = [
   { page: 'prescriptions', icon: FileText, label: 'Prescriptions' },
+  { page: 'xrays', icon: Image, label: 'X-Rays' },
+  { page: 'standby-queue', icon: Timer, label: 'Standby Queue' },
   { page: 'schedule', icon: Clock, label: 'Schedule' },
   { page: 'services', icon: Stethoscope, label: 'Services' },
 ];

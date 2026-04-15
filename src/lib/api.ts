@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '@/integrations/supabase/client';
-import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember, Notification } from './types';
+import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember, Notification, Xray, StandbyRequest } from './types';
 import { formatPhoneWithCountry, normalizePhoneForLogin } from './countries';
 import { formatTime } from './utils';
 import bcryptjs from 'bcryptjs';
@@ -408,12 +408,12 @@ export const appointmentsAPI = {
       if ((appointment.reschedule_count || 0) >= 1) {
         throw new Error('You have already rescheduled this appointment once. No further reschedules are allowed.');
       }
-      // Check 1-hour limit
+      // Check 24-hour (1 day) limit
       const aptDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
       const now = new Date();
       const hoursUntil = (aptDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-      if (hoursUntil < 1) {
-        throw new Error('Appointments can only be rescheduled at least 1 hour before the scheduled time.');
+      if (hoursUntil < 24) {
+        throw new Error('Appointments can only be rescheduled at least 1 day before the scheduled time.');
       }
     }
 
@@ -917,6 +917,115 @@ export const onboardingAPI = {
   },
 };
 
+// ========== XRAYS API ==========
+export const xraysAPI = {
+  async fetchByUser(userId: string): Promise<Xray[]> {
+    const { data, error } = await (supabase as any)
+      .from('xrays')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as Xray[];
+  },
+
+  async fetchAll(): Promise<Xray[]> {
+    const { data, error } = await (supabase as any)
+      .from('xrays')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as Xray[];
+  },
+
+  async create(xray: Omit<Xray, 'id' | 'created_at'>) {
+    const { data, error } = await (supabase as any)
+      .from('xrays')
+      .insert([xray])
+      .select()
+      .single();
+    if (error) throw error;
+    return data as unknown as Xray;
+  },
+
+  async uploadImage(file: File, xrayId: number): Promise<string> {
+    const ext = file.name.split('.').pop();
+    const fileName = `xray_${xrayId}_${Date.now()}.${ext}`;
+    const filePath = `xrays/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('xrays')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabase.storage
+      .from('xrays')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  },
+
+  async delete(id: number) {
+    const { error } = await (supabase as any)
+      .from('xrays')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+};
+
+// ========== STANDBY / WALK-IN QUEUE API ==========
+export const standbyAPI = {
+  async fetchByUser(userId: string): Promise<StandbyRequest[]> {
+    const { data, error } = await (supabase as any)
+      .from('standby_requests')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as StandbyRequest[];
+  },
+
+  async fetchAll(): Promise<StandbyRequest[]> {
+    const { data, error } = await (supabase as any)
+      .from('standby_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as StandbyRequest[];
+  },
+
+  async create(request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>) {
+    const { data, error } = await (supabase as any)
+      .from('standby_requests')
+      .insert([{ ...request, status: 'Waiting' }])
+      .select()
+      .single();
+    if (error) throw error;
+    return data as unknown as StandbyRequest;
+  },
+
+  async updateStatus(id: number, status: StandbyRequest['status'], adminNotes?: string, assignedTime?: string) {
+    const updates: Record<string, unknown> = { status };
+    if (adminNotes !== undefined) updates.admin_notes = adminNotes;
+    if (assignedTime !== undefined) updates.assigned_time = assignedTime;
+    const { error } = await (supabase as any)
+      .from('standby_requests')
+      .update(updates)
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async cancel(id: number) {
+    const { error } = await (supabase as any)
+      .from('standby_requests')
+      .update({ status: 'Cancelled' })
+      .eq('id', id);
+    if (error) throw error;
+  },
+};
+
 // ========== APPOINTMENT REMINDERS API ==========
 const _reminderProcessing = new Set<string>();
 
@@ -957,7 +1066,7 @@ export const remindersAPI = {
             await notificationsAPI.create({
               user_id: userId,
               title: 'Appointment Very Soon',
-              message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${formatTime(apt.appointment_time)}. If you need to cancel, please do so at least 1 hour before.`,
+              message: `Your appointment is in about ${Math.round(hoursUntil)} hour(s) at ${formatTime(apt.appointment_time)}. If you need to cancel, please do so at least 1 day before.`,
               type: 'reminder',
               related_appointment_id: apt.id,
             });

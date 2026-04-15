@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle } from 'lucide-react';
+import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle, Image } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -67,11 +67,11 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
               <ul className="text-xs text-foreground/80 space-y-1">
                 <li className="flex items-start gap-1.5">
                   <span className="text-secondary mt-0.5">&#8226;</span>
-                  <span>Cancellations must be made at least <strong className="text-foreground">1 hour</strong> before your appointment.</span>
+                  <span>Cancellations must be made at least <strong className="text-foreground">1 day (24 hours)</strong> before your appointment.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-secondary mt-0.5">&#8226;</span>
-                  <span>Rescheduling is allowed <strong className="text-foreground">1 time only</strong>, at least 1 hour before the appointment.</span>
+                  <span>Rescheduling is allowed <strong className="text-foreground">1 time only</strong>, at least 1 day before the appointment.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-amber-500 mt-0.5"><AlertTriangle className="w-3 h-3" /></span>
@@ -163,11 +163,13 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
       )}
 
       {/* Quick actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: Users, label: 'Book for Others', desc: 'Schedule for family & friends', page: 'group-booking' as DashboardPage },
+          { icon: Clock, label: 'Standby Queue', desc: 'Request when fully booked', page: 'standby' as DashboardPage },
           { icon: Activity, label: 'Services', desc: 'View available treatments', page: 'services' as DashboardPage },
           { icon: ClipboardCheck, label: 'Prescriptions', desc: 'View your prescriptions', page: 'prescriptions' as DashboardPage },
+          { icon: Image, label: 'X-Rays', desc: 'View your dental x-rays', page: 'xrays' as DashboardPage },
         ].map(({ icon: Icon, label, desc, page }) => (
           <button
             key={page}

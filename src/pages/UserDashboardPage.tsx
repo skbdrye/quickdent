@@ -17,6 +17,8 @@ const PatientProfile = lazy(() => import('@/components/user/PatientProfile').the
 const UserSettings = lazy(() => import('@/components/user/UserSettings'));
 const ServicesDisplay = lazy(() => import('@/components/user/ServicesDisplay'));
 const PrescriptionsView = lazy(() => import('@/components/user/PrescriptionsView'));
+const XraysView = lazy(() => import('@/components/user/XraysView'));
+const StandbyBooking = lazy(() => import('@/components/user/StandbyBooking'));
 
 function PageLoader() {
   return (
@@ -37,8 +39,8 @@ export default function UserDashboardPage() {
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
 
-  // Auto-logout after 15 minutes of inactivity
-  useInactivityTimer(15, () => {
+  // Auto-logout after 12 minutes of inactivity
+  useInactivityTimer(12, () => {
     logout();
     navigate('/');
   });
@@ -99,6 +101,8 @@ export default function UserDashboardPage() {
       case 'my-appointments': return 'My Appointments';
       case 'services': return 'Services';
       case 'prescriptions': return 'Prescriptions';
+      case 'xrays': return 'X-Rays';
+      case 'standby': return 'Standby Queue';
       case 'profile': return 'Profile';
       case 'settings': return 'Settings';
       default: return 'Dashboard';
@@ -113,6 +117,8 @@ export default function UserDashboardPage() {
       case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} />;
       case 'services': return <Suspense fallback={<PageLoader />}><ServicesDisplay /></Suspense>;
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView highlightAppointmentId={prescriptionHighlightId} highlightKey={prescriptionHighlightKey} /></Suspense>;
+      case 'xrays': return <Suspense fallback={<PageLoader />}><XraysView /></Suspense>;
+      case 'standby': return <Suspense fallback={<PageLoader />}><StandbyBooking /></Suspense>;
       case 'profile': return <Suspense fallback={<PageLoader />}><PatientProfile onNavigate={setActivePage} /></Suspense>;
       case 'settings': return <Suspense fallback={<PageLoader />}><UserSettings /></Suspense>;
       default: return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;

@@ -13,6 +13,8 @@ const PatientList = lazy(() => import('@/components/admin/PatientList'));
 const ClinicSchedule = lazy(() => import('@/components/admin/ClinicSchedule'));
 const ServiceManagement = lazy(() => import('@/components/admin/ServiceManagement'));
 const AdminPrescriptions = lazy(() => import('@/components/admin/AdminPrescriptions'));
+const AdminXrays = lazy(() => import('@/components/admin/AdminXrays'));
+const AdminStandbyQueue = lazy(() => import('@/components/admin/AdminStandbyQueue'));
 
 function PageLoader() {
   return (
@@ -71,6 +73,8 @@ export default function AdminDashboardPage() {
       case 'appointments': return 'Appointments';
       case 'patients': return 'Patients';
       case 'prescriptions': return 'Prescriptions';
+      case 'xrays': return 'X-Rays';
+      case 'standby-queue': return 'Standby Queue';
       case 'schedule': return 'Clinic Schedule';
       case 'services': return 'Services';
       default: return 'Admin Dashboard';
@@ -85,6 +89,8 @@ export default function AdminDashboardPage() {
       case 'schedule': return <Suspense fallback={<PageLoader />}><ClinicSchedule /></Suspense>;
       case 'services': return <Suspense fallback={<PageLoader />}><ServiceManagement /></Suspense>;
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><AdminPrescriptions /></Suspense>;
+      case 'xrays': return <Suspense fallback={<PageLoader />}><AdminXrays /></Suspense>;
+      case 'standby-queue': return <Suspense fallback={<PageLoader />}><AdminStandbyQueue /></Suspense>;
       default: return <AdminDashboard onNavigate={setActivePage} />;
     }
   };

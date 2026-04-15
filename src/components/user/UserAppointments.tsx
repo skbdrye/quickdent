@@ -83,7 +83,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
     const aptDate = new Date(apt.appointment_date + 'T' + apt.appointment_time);
     const now = new Date();
     const hoursUntil = (aptDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    return hoursUntil >= 1;
+    return hoursUntil >= 24;
   };
 
   const canReschedule = (apt: typeof appointments[0]) => {
@@ -154,7 +154,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
       <div className="flex items-start gap-3 p-3 rounded-xl bg-secondary/5 border border-secondary/20">
         <Info className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
         <div className="text-xs text-foreground/75 space-y-0.5">
-          <p>Cancellations & rescheduling must be at least <strong className="text-foreground">1 hour</strong> before your appointment.</p>
+          <p>Cancellations & rescheduling must be at least <strong className="text-foreground">1 day (24 hours)</strong> before your appointment.</p>
           <p>Rescheduling is allowed <strong className="text-foreground">1 time only</strong> per appointment.</p>
         </div>
       </div>

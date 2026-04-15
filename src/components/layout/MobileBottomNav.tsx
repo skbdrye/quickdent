@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarPlus, Users, User, MoreHorizontal, Stethoscope, FileText, Settings, CalendarCheck } from 'lucide-react';
+import { LayoutDashboard, CalendarPlus, Users, User, MoreHorizontal, Stethoscope, FileText, Settings, CalendarCheck, Image, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { DashboardPage } from '@/lib/types';
 import { useState } from 'react';
@@ -17,8 +17,10 @@ const primaryItems: { page: DashboardPage; icon: typeof LayoutDashboard; label: 
 
 const moreItems: { page: DashboardPage; icon: typeof LayoutDashboard; label: string }[] = [
   { page: 'group-booking', icon: Users, label: 'Book for Others' },
+  { page: 'standby', icon: Clock, label: 'Standby Queue' },
   { page: 'services', icon: Stethoscope, label: 'Services' },
   { page: 'prescriptions', icon: FileText, label: 'Prescriptions' },
+  { page: 'xrays', icon: Image, label: 'X-Rays' },
   { page: 'settings', icon: Settings, label: 'Settings' },
 ];
 

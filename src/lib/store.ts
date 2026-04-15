@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI, notificationsAPI } from './api';
-import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription, Notification } from './types';
+import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI, notificationsAPI, xraysAPI, standbyAPI } from './api';
+import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription, Notification, Xray, StandbyRequest } from './types';
 
 // ========== HELPER FUNCTIONS FOR LOCALSTORAGE ==========
 function loadJSON<T>(key: string, fallback: T): T {
@@ -373,5 +373,117 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
   clearAll: (userId: string) => {
     notificationsAPI.clearAll(userId);
     set({ notifications: [], unreadCount: 0 });
+  },
+}));
+
+// ========== XRAYS STORE ==========
+interface XraysState {
+  xrays: Xray[];
+  isLoading: boolean;
+  fetchByUser: (userId: string) => Promise<void>;
+  fetchAll: () => Promise<void>;
+  addXray: (xray: Omit<Xray, 'id' | 'created_at'>) => Promise<Xray>;
+  uploadImage: (file: File, xrayId: number) => Promise<string>;
+  deleteXray: (id: number) => Promise<void>;
+}
+
+export const useXraysStore = create<XraysState>((set, get) => ({
+  xrays: [],
+  isLoading: false,
+
+  fetchByUser: async (userId) => {
+    set({ isLoading: true });
+    try {
+      const xrays = await xraysAPI.fetchByUser(userId);
+      set({ xrays, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchAll: async () => {
+    set({ isLoading: true });
+    try {
+      const xrays = await xraysAPI.fetchAll();
+      set({ xrays, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  addXray: async (xray) => {
+    const created = await xraysAPI.create(xray);
+    set({ xrays: [created, ...get().xrays] });
+    return created;
+  },
+
+  uploadImage: async (file, xrayId) => {
+    const url = await xraysAPI.uploadImage(file, xrayId);
+    return url;
+  },
+
+  deleteXray: async (id) => {
+    await xraysAPI.delete(id);
+    set({ xrays: get().xrays.filter(x => x.id !== id) });
+  },
+}));
+
+// ========== STANDBY STORE ==========
+interface StandbyState {
+  requests: StandbyRequest[];
+  isLoading: boolean;
+  fetchByUser: (userId: string) => Promise<void>;
+  fetchAll: () => Promise<void>;
+  addRequest: (request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>) => Promise<StandbyRequest>;
+  updateStatus: (id: number, status: StandbyRequest['status'], adminNotes?: string, assignedTime?: string) => Promise<void>;
+  cancelRequest: (id: number) => Promise<void>;
+}
+
+export const useStandbyStore = create<StandbyState>((set, get) => ({
+  requests: [],
+  isLoading: false,
+
+  fetchByUser: async (userId) => {
+    set({ isLoading: true });
+    try {
+      const requests = await standbyAPI.fetchByUser(userId);
+      set({ requests, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchAll: async () => {
+    set({ isLoading: true });
+    try {
+      const requests = await standbyAPI.fetchAll();
+      set({ requests, isLoading: false });
+    } catch {
+      set({ isLoading: false });
+    }
+  },
+
+  addRequest: async (request) => {
+    const created = await standbyAPI.create(request);
+    set({ requests: [created, ...get().requests] });
+    return created;
+  },
+
+  updateStatus: async (id, status, adminNotes, assignedTime) => {
+    await standbyAPI.updateStatus(id, status, adminNotes, assignedTime);
+    set({
+      requests: get().requests.map(r =>
+        r.id === id ? { ...r, status, admin_notes: adminNotes ?? r.admin_notes, assigned_time: assignedTime ?? r.assigned_time } : r
+      ),
+    });
+  },
+
+  cancelRequest: async (id) => {
+    await standbyAPI.cancel(id);
+    set({
+      requests: get().requests.map(r =>
+        r.id === id ? { ...r, status: 'Cancelled' as const } : r
+      ),
+    });
   },
 }));

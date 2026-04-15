@@ -67,7 +67,7 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice' | 'prescription';
+  type: 'new_booking' | 'cancellation' | 'reschedule' | 'reminder' | 'no_show_warning' | 'status_change' | 'ban_notice' | 'prescription' | 'xray' | 'standby';
   is_read: boolean;
   created_at: string;
   related_appointment_id?: number | null;
@@ -142,6 +142,31 @@ export interface ClinicService {
   sort_order: number;
 }
 
+export interface Xray {
+  id: number;
+  user_id: string;
+  appointment_id?: number | null;
+  group_member_id?: number | null;
+  uploaded_by: string;
+  image_url: string;
+  notes: string;
+  xray_date: string;
+  created_at?: string;
+}
+
+export interface StandbyRequest {
+  id: number;
+  user_id: string;
+  patient_name: string;
+  contact: string;
+  preferred_date: string;
+  reason: string;
+  status: 'Waiting' | 'Confirmed' | 'Expired' | 'Cancelled';
+  assigned_time?: string | null;
+  admin_notes?: string | null;
+  created_at?: string;
+}
+
 export interface ClinicScheduleDay {
   is_open: boolean;
   open_time: string;
@@ -158,8 +183,8 @@ export interface TimeSlot {
   available: boolean;
 }
 
-export type DashboardPage = 'dashboard' | 'my-appointments' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions';
-export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services' | 'prescriptions';
+export type DashboardPage = 'dashboard' | 'my-appointments' | 'appointments' | 'group-booking' | 'profile' | 'settings' | 'services' | 'prescriptions' | 'xrays' | 'standby';
+export type AdminPage = 'dashboard' | 'appointments' | 'patients' | 'schedule' | 'services' | 'prescriptions' | 'xrays' | 'standby-queue';
 
 export function getBookingTypeLabel(isGroupBooking: boolean, memberCount?: number): string {
   if (!isGroupBooking) return 'Individual';

@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { LogIn, UserPlus, Eye, EyeOff, Check, X } from 'lucide-react';
 import { COUNTRY_CODES } from '@/lib/countries';
 import { Link } from 'react-router-dom';
+import { OtpVerification } from './OtpVerification';
+import { SuccessModal } from '@/components/shared/SuccessModal';
 
 interface LoginDialogProps {
   open: boolean;
@@ -59,6 +61,9 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [tab, setTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
   const [, startTransition] = useTransition();
+  const [showOtp, setShowOtp] = useState(false);
+  const [pendingRegData, setPendingRegData] = useState<{ username: string; phone: string; countryCode: string; password: string } | null>(null);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
 
   // Refresh remembered user when dialog opens
   useEffect(() => {
@@ -140,16 +145,30 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
       return;
     }
 
+    // Show OTP verification before completing registration
+    const fullPhone = `${regCountryCode}${cleanPhone}`;
+    setPendingRegData({ username: regUsername, phone: cleanPhone, countryCode: regCountryCode, password: regPassword });
+    setShowOtp(true);
+  };
+
+  const handleOtpVerified = async () => {
+    if (!pendingRegData) return;
+    setShowOtp(false);
     setIsLoading(true);
-    const result = await register(regUsername, regPhone, regCountryCode, regPassword);
+    const result = await register(pendingRegData.username, pendingRegData.phone, pendingRegData.countryCode, pendingRegData.password);
     setIsLoading(false);
     if (result.success) {
-      toast({ title: 'Success', description: result.message, duration: 2500 });
+      setSuccessModal({
+        open: true,
+        title: 'Registration Successful!',
+        description: 'Your phone has been verified and your account has been created. You can now login.',
+      });
       setTab('login');
       setRegUsername('');
       setRegPhone('');
       setRegPassword('');
       setAgreeTerms(false);
+      setPendingRegData(null);
     } else {
       toast({ title: 'Registration failed', description: result.message, variant: 'destructive', duration: 2500 });
     }
@@ -332,6 +351,22 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* OTP Verification */}
+      <OtpVerification
+        open={showOtp}
+        onOpenChange={(open) => { setShowOtp(open); if (!open) setPendingRegData(null); }}
+        phone={pendingRegData ? `${pendingRegData.countryCode}${pendingRegData.phone}` : ''}
+        onVerified={handleOtpVerified}
+      />
+
+      {/* Registration Success Modal */}
+      <SuccessModal
+        open={successModal.open}
+        title={successModal.title}
+        description={successModal.description}
+        onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
+      />
     </Dialog>
   );
 }
