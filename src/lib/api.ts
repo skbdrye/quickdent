@@ -930,10 +930,21 @@ export const xraysAPI = {
   },
 
   async fetchAll(): Promise<Xray[]> {
+    // Table not yet in generated types - use untyped escape hatch
     const { data, error } = await (supabase as any)
       .from('xrays')
       .select('*')
       .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as unknown as Xray[];
+  },
+
+  async fetchByAppointment(appointmentId: number): Promise<Xray[]> {
+    const { data, error } = await (supabase as any)
+      .from('xrays')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .order('xray_date', { ascending: false });
     if (error) throw error;
     return (data || []) as unknown as Xray[];
   },

@@ -6,6 +6,7 @@ import AdminDashboard from '@/components/admin/AdminDashboard';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { AdminMobileBottomNav } from '@/components/layout/AdminMobileBottomNav';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
+import { InactivityWarningDialog } from '@/components/shared/InactivityWarningDialog';
 import type { AdminPage } from '@/lib/types';
 
 const AppointmentManagement = lazy(() => import('@/components/admin/AppointmentManagement'));
@@ -32,8 +33,8 @@ export default function AdminDashboardPage() {
   const { fetchNotifications } = useNotificationsStore();
   const navigate = useNavigate();
 
-  // Auto-logout after 30 minutes of inactivity for admin
-  useInactivityTimer(30, () => {
+  // Auto-logout after 30 minutes of inactivity for admin (with a 60s warning)
+  const { warningOpen, secondsLeft, stayActive, logoutNow } = useInactivityTimer(30, () => {
     logout();
     navigate('/');
   });
@@ -105,6 +106,7 @@ export default function AdminDashboardPage() {
         </main>
       </div>
       <AdminMobileBottomNav activePage={activePage} onNavigate={setActivePage} />
+      <InactivityWarningDialog open={warningOpen} secondsLeft={secondsLeft} onStay={stayActive} onLogout={logoutNow} />
     </div>
   );
 }

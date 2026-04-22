@@ -1,9 +1,24 @@
+import { lazy, Suspense } from 'react';
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import UserDashboardPage from "./pages/UserDashboardPage";
-import AdminDashboardPage from "./pages/AdminDashboardPage";
-import TermsPage from "./pages/TermsPage";
-import PrivacyPage from "./pages/PrivacyPage";
+
+// Lazy-loaded heavy authenticated pages keep the initial bundle small.
+const UserDashboardPage = lazy(() => import("./pages/UserDashboardPage"));
+const AdminDashboardPage = lazy(() => import("./pages/AdminDashboardPage"));
+const TermsPage = lazy(() => import("./pages/TermsPage"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage"));
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-10 h-10 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+const lazied = (Component: React.LazyExoticComponent<React.ComponentType>) => (
+  <Suspense fallback={<PageFallback />}><Component /></Suspense>
+);
 
 export const routers = [
   {
@@ -14,22 +29,22 @@ export const routers = [
   {
     path: "/dashboard",
     name: 'user-dashboard',
-    element: <UserDashboardPage />,
+    element: lazied(UserDashboardPage),
   },
   {
     path: "/admin",
     name: 'admin-dashboard',
-    element: <AdminDashboardPage />,
+    element: lazied(AdminDashboardPage),
   },
   {
     path: "/terms",
     name: 'terms',
-    element: <TermsPage />,
+    element: lazied(TermsPage),
   },
   {
     path: "/privacy",
     name: 'privacy',
-    element: <PrivacyPage />,
+    element: lazied(PrivacyPage),
   },
   /* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */
   {

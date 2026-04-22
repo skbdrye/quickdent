@@ -238,6 +238,12 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         setExpandedMember(i);
         return;
       }
+      // Phone is required when booking for someone else (non-self members)
+      if (m.relationship !== 'Self' && !(m.phone || '').trim()) {
+        toast({ title: 'Phone required', description: `Please provide a phone number for member ${i + 1}.`, variant: 'destructive' });
+        setExpandedMember(i);
+        return;
+      }
       if (!m.med_consent) {
         toast({ title: 'Consent Missing', description: `Member ${i + 1} must check the medical consent box`, variant: 'destructive' });
         setExpandedMember(i);
@@ -409,8 +415,8 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                         </Select>
                       </div>
                       <div className="col-span-2">
-                        <Label className="text-xs">Phone (optional)</Label>
-                        <Input value={member.phone} onChange={e => updateMember(i, { phone: e.target.value })} disabled={isSelf} className="h-9" placeholder="Phone number" />
+                        <Label className="text-xs">Phone {isSelf ? '(from your profile)' : '*'}</Label>
+                        <Input value={member.phone} onChange={e => updateMember(i, { phone: e.target.value })} disabled={isSelf} className="h-9" placeholder="Phone number" inputMode="tel" />
                       </div>
                     </div>
 

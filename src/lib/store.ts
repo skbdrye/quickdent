@@ -2,16 +2,47 @@ import { create } from 'zustand';
 import { authAPI, appointmentsAPI, profileAPI, assessmentAPI, servicesAPI, clinicSettingsAPI, prescriptionsAPI, notificationsAPI, xraysAPI, standbyAPI } from './api';
 import type { User, Appointment, PatientProfile, MedicalAssessment, ClinicService, ClinicSchedule, Prescription, Notification, Xray, StandbyRequest } from './types';
 
-// ========== HELPER FUNCTIONS FOR LOCALSTORAGE ==========
+// ========== HELPER FUNCTIONS FOR PER-TAB SESSION STORAGE ==========
+// Each browser tab keeps its own session in sessionStorage so a user can be
+// signed in on multiple accounts at once without notifications/data bleeding
+// across accounts on the same device. We also fall back to localStorage so a
+// fresh tab/window opened by the same user continues their session.
+const SESSION_KEYS = new Set(['qd_user', 'qd_auth']);
+
 function loadJSON<T>(key: string, fallback: T): T {
   try {
+    if (SESSION_KEYS.has(key)) {
+      const tabRaw = sessionStorage.getItem(key);
+      if (tabRaw) return JSON.parse(tabRaw);
+      const persistedRaw = localStorage.getItem(key);
+      if (persistedRaw) {
+        // Hydrate the new tab from the last known session.
+        sessionStorage.setItem(key, persistedRaw);
+        return JSON.parse(persistedRaw);
+      }
+      return fallback;
+    }
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
   } catch { return fallback; }
 }
 
 function saveJSON(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+  try {
+    const json = JSON.stringify(value);
+    if (SESSION_KEYS.has(key)) {
+      sessionStorage.setItem(key, json);
+      // Mirror to localStorage so a brand-new tab can hydrate, but only if a
+      // value still exists (logout clears both).
+      if (value === null || value === false) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, json);
+      }
+    } else {
+      localStorage.setItem(key, json);
+    }
+  } catch { /* ignore */ }
 }
 
 // ========== AUTH STORE ==========
@@ -58,6 +89,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     saveJSON('qd_user', null);
     saveJSON('qd_auth', false);
     set({ user: null, isAuthenticated: false });
+    // Clear cached account-scoped state so the next signed-in account on the
+    // same tab doesn't see stale notifications / appointments / etc.
+    try {
+      useNotificationsStore.setState({ notifications: [], unreadCount: 0, isLoading: false });
+      useAppointmentsStore.setState({ appointments: [], isLoading: false });
+      useProfileStore.setState({ profile: null, assessment: null });
+      useStandbyStore.setState({ requests: [], isLoading: false });
+      useXraysStore.setState({ xrays: [], isLoading: false });
+    } catch { /* stores may not yet be initialised */ }
   },
 
   setUser: (user: User) => {

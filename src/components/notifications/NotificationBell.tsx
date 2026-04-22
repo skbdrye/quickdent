@@ -57,7 +57,15 @@ export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescrip
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (user?.id) fetchNotifications(user.id);
+    if (user?.id) {
+      // Clear any cached notifications from a previous account before fetching
+      // this user's own list. Prevents notifications bleeding between accounts
+      // when the same browser tab signs into a different user.
+      useNotificationsStore.setState({ notifications: [], unreadCount: 0 });
+      fetchNotifications(user.id);
+    } else {
+      useNotificationsStore.setState({ notifications: [], unreadCount: 0 });
+    }
   }, [user?.id, fetchNotifications]);
 
   // Realtime subscription for new notifications

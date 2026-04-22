@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Search, Filter, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2, Stethoscope } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { appointmentsAPI, notificationsAPI, servicesAPI } from '@/lib/api';
+import { appointmentsAPI, notificationsAPI, servicesAPI, xraysAPI } from '@/lib/api';
 import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
@@ -137,6 +137,16 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
+  // ---- X-Ray upload state (parallel to prescriptions) ----
+  const [xrays, setXrays] = useState<Array<{ id: number; image_url: string; uploaded_by: string; xray_date: string; notes: string; group_member_id: number | null }>>([]);
+  const [showXrayForm, setShowXrayForm] = useState(false);
+  const [xrayTarget, setXrayTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
+  const [xrayImage, setXrayImage] = useState<File | null>(null);
+  const [xrayPreview, setXrayPreview] = useState<string | null>(null);
+  const [xrayUploadedBy, setXrayUploadedBy] = useState('Dr. Admin');
+  const [xrayNotes, setXrayNotes] = useState('');
+  const xrayFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => { fetchServices(); }, [fetchServices]);
 
   const loadAppointments = useCallback(async () => {
@@ -250,23 +260,27 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
     setExpandedGroupMember(null);
 
     if (apt.is_group_booking) {
-      const [gmRes, rxRes] = await Promise.all([
+      const [gmRes, rxRes, xraysList] = await Promise.all([
         supabase.from('group_members').select('*').eq('appointment_id', apt.id),
         supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
+        xraysAPI.fetchByAppointment(apt.id).catch(() => []),
       ]);
       setGroupMembers((gmRes.data || []) as unknown as GroupMember[]);
       setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
+      setXrays(xraysList as never);
       setPatientProfile(null);
       setMedicalAssessment(null);
     } else {
-      const [profileRes, medRes, rxRes] = await Promise.all([
+      const [profileRes, medRes, rxRes, xraysList] = await Promise.all([
         supabase.from('patient_profiles').select('*').eq('user_id', apt.user_id).maybeSingle(),
         supabase.from('medical_assessments').select('*').eq('user_id', apt.user_id).maybeSingle(),
         supabase.from('prescriptions').select('*').eq('appointment_id', apt.id).order('prescription_date', { ascending: false }),
+        xraysAPI.fetchByAppointment(apt.id).catch(() => []),
       ]);
       setPatientProfile(profileRes.data as PatientProfile | null);
       setMedicalAssessment(medRes.data as MedicalAssessment | null);
       setPrescriptions((rxRes.data || []) as unknown as Prescription[]);
+      setXrays(xraysList as never);
       setGroupMembers([]);
     }
     setShowDetails(true);
@@ -296,8 +310,8 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
     }
     setUploading(true);
     try {
-      // 1. Upload image to Supabase storage first
-      const ext = selectedImage.name.split('.').pop() || 'jpg';
+      // 1. Upload image to Supabase storage first - sanitised filename only
+      const ext = (selectedImage.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
       const fileName = `prescription_${prescriptionTarget.appointmentId}_${Date.now()}.${ext}`;
       const filePath = `prescriptions/${fileName}`;
 
@@ -360,6 +374,92 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
     setSelectedImage(null);
     setImagePreview(null);
     setShowPrescriptionForm(true);
+  }
+
+  // ---- X-ray helpers ----
+  function handleXrayFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Invalid file', description: 'Please select an image file.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Image must be under 15MB.', variant: 'destructive' });
+      return;
+    }
+    setXrayImage(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setXrayPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  function openXrayForm(userId: string, appointmentId: number, groupMemberId?: number, memberName?: string) {
+    setXrayTarget({ userId, appointmentId, groupMemberId, memberName });
+    setXrayUploadedBy('Dr. Admin');
+    setXrayNotes('');
+    setXrayImage(null);
+    setXrayPreview(null);
+    setShowXrayForm(true);
+  }
+
+  async function submitXray() {
+    if (!xrayImage) {
+      toast({ title: 'Pick an image', description: 'Please choose an x-ray image to upload.', variant: 'destructive' });
+      return;
+    }
+    setUploading(true);
+    try {
+      // 1. Upload file to storage. Sanitised filename - never use raw file.name
+      // (which is what was leaking the "image.png" toast/notification).
+      const ext = (xrayImage.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const fileName = `xray_${xrayTarget.appointmentId}_${Date.now()}.${ext}`;
+      const filePath = `xrays/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('xrays')
+        .upload(filePath, xrayImage, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('xrays').getPublicUrl(filePath);
+      const imageUrl = urlData.publicUrl;
+
+      // 2. Insert xray record via typed API helper
+      const xrayRow: Omit<import('@/lib/types').Xray, 'id' | 'created_at'> = {
+        user_id: xrayTarget.userId,
+        appointment_id: xrayTarget.appointmentId,
+        uploaded_by: xrayUploadedBy || 'Dr. Admin',
+        image_url: imageUrl,
+        notes: xrayNotes || '',
+        xray_date: new Date().toISOString().split('T')[0],
+        ...(xrayTarget.groupMemberId ? { group_member_id: xrayTarget.groupMemberId } : {}),
+      };
+      await xraysAPI.create(xrayRow);
+
+      // Use a generic message - never reveal raw file name to the patient.
+      await notificationsAPI.create({
+        user_id: xrayTarget.userId,
+        title: 'New X-Ray Available',
+        message: `An x-ray has been uploaded${xrayTarget.memberName ? ` for ${xrayTarget.memberName}` : ''}. View it in your X-Rays tab.`,
+        type: 'xray',
+        related_appointment_id: xrayTarget.appointmentId,
+      });
+
+      toast({ title: 'X-ray uploaded', description: 'The x-ray has been saved and the patient has been notified.' });
+      setSuccessModal({ open: true, title: 'X-Ray Uploaded', description: 'The x-ray has been saved and the patient has been notified.' });
+
+      const updated = await xraysAPI.fetchByAppointment(xrayTarget.appointmentId).catch(() => []);
+      setXrays(updated as never);
+
+      setXrayImage(null);
+      setXrayPreview(null);
+      setXrayNotes('');
+      setShowXrayForm(false);
+      if (xrayFileInputRef.current) xrayFileInputRef.current.value = '';
+    } catch (err) {
+      console.error('[X-Ray upload] failed:', err);
+      toast({ title: 'Upload failed', description: 'Could not save x-ray. Please try again.', variant: 'destructive' });
+    }
+    setUploading(false);
   }
 
   // Get display name for appointment - show group member names for group bookings
@@ -786,9 +886,14 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                               {renderMemberMedical(member)}
                             </div>
                             {(selectedAppointment?.status === 'Confirmed' || selectedAppointment?.status === 'Completed') && (
-                              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
-                                <Upload className="h-3.5 w-3.5" /> Upload Prescription
-                              </Button>
+                              <div className="flex flex-wrap gap-2">
+                                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => selectedAppointment && openPrescriptionForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
+                                  <Upload className="h-3.5 w-3.5" /> Upload Prescription
+                                </Button>
+                                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => selectedAppointment && openXrayForm(selectedAppointment.user_id, selectedAppointment.id, member.id, member.member_name)}>
+                                  <ImageIcon className="h-3.5 w-3.5" /> Upload X-Ray
+                                </Button>
+                              </div>
                             )}
                           </div>
                         )}
@@ -841,6 +946,49 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                 )}
               </div>
             </div>
+
+            {/* X-Rays Section (mirror of Prescriptions) */}
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">X-Rays</p>
+                {selectedAppointment && !selectedAppointment.is_group_booking && (selectedAppointment.status === 'Confirmed' || selectedAppointment.status === 'Completed') && (
+                  <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => openXrayForm(selectedAppointment.user_id, selectedAppointment.id, undefined, selectedAppointment.patient_name)}>
+                    <Upload className="h-3 w-3" /> Upload
+                  </Button>
+                )}
+              </div>
+              <div className="p-4">
+                {xrays.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No x-rays yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {xrays.map((x) => {
+                      const memberName = x.group_member_id ? groupMembers.find(m => m.id === x.group_member_id)?.member_name : undefined;
+                      return (
+                        <div key={x.id} className="bg-muted/30 rounded-lg overflow-hidden border border-border/30">
+                          <div className="p-3 flex justify-between items-center">
+                            <div>
+                              <span className="font-medium text-sm text-foreground">{x.uploaded_by}</span>
+                              {memberName && <Badge variant="outline" className="text-[10px] ml-2">For: {memberName}</Badge>}
+                            </div>
+                            <span className="text-xs text-muted-foreground">{new Date(x.xray_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          {x.image_url && (
+                            <div className="cursor-pointer border-t border-border/30 hover:opacity-90 transition-opacity" onClick={() => setViewingImage(x.image_url)}>
+                              <img src={x.image_url} alt="X-Ray" className="w-full max-h-48 object-contain bg-black" />
+                              <p className="text-center py-1.5 text-[11px] text-muted-foreground bg-muted/20">Click to view full size</p>
+                            </div>
+                          )}
+                          {x.notes && (
+                            <div className="px-3 pb-3 text-xs text-muted-foreground border-t border-border/30 pt-2">{x.notes}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -883,6 +1031,53 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
             </div>
             <Button onClick={submitPrescription} className="w-full gap-2" disabled={uploading || !selectedImage}>
               {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload Prescription</>}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* X-Ray Upload Dialog */}
+      <Dialog open={showXrayForm} onOpenChange={setShowXrayForm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Upload className="h-5 w-5" /> Upload X-Ray Image</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {xrayTarget.memberName && (
+              <div className="bg-muted/50 rounded-lg p-3 text-sm">
+                <span className="text-muted-foreground">Patient:</span> <span className="font-medium text-foreground">{xrayTarget.memberName}</span>
+              </div>
+            )}
+            <div>
+              <Label>Uploaded By</Label>
+              <Input value={xrayUploadedBy} onChange={(e) => setXrayUploadedBy(e.target.value)} placeholder="Doctor / technician name" />
+            </div>
+            <div>
+              <Label>Notes (optional)</Label>
+              <Input value={xrayNotes} onChange={(e) => setXrayNotes(e.target.value)} placeholder="e.g. Bitewing x-ray, lower-right molar" />
+            </div>
+            <div>
+              <Label>X-Ray Image *</Label>
+              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the x-ray</p>
+              <input ref={xrayFileInputRef} type="file" accept="image/*" onChange={handleXrayFileSelect} className="hidden" />
+              {!xrayPreview ? (
+                <button type="button" onClick={() => xrayFileInputRef.current?.click()} className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group">
+                  <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-2 group-hover:text-secondary transition-colors" />
+                  <p className="text-sm font-medium text-foreground">Click to select image</p>
+                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 15MB</p>
+                </button>
+              ) : (
+                <div className="relative rounded-lg overflow-hidden border border-border">
+                  <img src={xrayPreview} alt="Preview" className="w-full max-h-64 object-contain bg-black" />
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => xrayFileInputRef.current?.click()} title="Replace"><Upload className="h-3 w-3" /></Button>
+                    <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => { setXrayImage(null); setXrayPreview(null); if (xrayFileInputRef.current) xrayFileInputRef.current.value = ''; }} title="Remove"><X className="h-3 w-3" /></Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <Button onClick={submitXray} className="w-full gap-2" disabled={uploading || !xrayImage}>
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload X-Ray</>}
             </Button>
           </div>
         </DialogContent>

@@ -9,6 +9,7 @@ import { OnboardingTutorial } from '@/components/user/OnboardingTutorial';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { useInactivityTimer } from '@/hooks/useInactivityTimer';
+import { InactivityWarningDialog } from '@/components/shared/InactivityWarningDialog';
 import type { DashboardPage } from '@/lib/types';
 
 const AppointmentBooking = lazy(() => import('@/components/user/AppointmentBooking').then(m => ({ default: m.AppointmentBooking })));
@@ -39,8 +40,8 @@ export default function UserDashboardPage() {
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
 
-  // Auto-logout after 12 minutes of inactivity
-  useInactivityTimer(12, () => {
+  // Auto-logout after 12 minutes of inactivity (with a 60s warning before sign-out)
+  const { warningOpen, secondsLeft, stayActive, logoutNow } = useInactivityTimer(12, () => {
     logout();
     navigate('/');
   });
@@ -136,6 +137,7 @@ export default function UserDashboardPage() {
       </div>
       <MobileBottomNav activePage={activePage} onNavigate={setActivePage} />
       <OnboardingTutorial userId={user.id} />
+      <InactivityWarningDialog open={warningOpen} secondsLeft={secondsLeft} onStay={stayActive} onLogout={logoutNow} />
     </div>
   );
 }
