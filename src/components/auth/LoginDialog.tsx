@@ -132,8 +132,8 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     }
     const cleanPhone = regPhone.replace(/\s/g, '');
     if (regCountryCode === '+63') {
-      if (cleanPhone.length !== 10) {
-        toast({ title: 'Invalid Number', description: 'Philippine phone number must be exactly 10 digits (e.g. 9XXXXXXXXX)', variant: 'destructive', duration: 2500 });
+      if (!/^9\d{9}$/.test(cleanPhone)) {
+        toast({ title: 'Invalid Number', description: 'PH mobile must be exactly 10 digits and start with 9 (e.g. 9XXXXXXXXX). With the leading 0 the full number is 11 digits.', variant: 'destructive', duration: 2500 });
         return;
       }
     } else if (!/^\d{7,15}$/.test(cleanPhone)) {
@@ -185,10 +185,18 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const handlePasswordChange = useCallback((val: string) => {
     startTransition(() => setRegPassword(val));
   }, [startTransition]);
-  // Phone input handler - filter non-digits
+  // Phone input handler - filter non-digits + enforce PH format (leading 9, max 10 digits)
   const handlePhoneChange = useCallback((val: string) => {
-    setRegPhone(val.replace(/\D/g, ''));
-  }, []);
+    let next = val.replace(/\D/g, '');
+    if (regCountryCode === '+63') {
+      // Strip an accidental leading 0 (PH local format) — input expects 9XXXXXXXXX
+      if (next.startsWith('0')) next = next.slice(1);
+      // Enforce that the first digit is 9 (PH mobile)
+      if (next.length >= 1 && next[0] !== '9') next = '9' + next.replace(/^9?/, '').slice(0, 9);
+      next = next.slice(0, 10);
+    }
+    setRegPhone(next);
+  }, [regCountryCode]);
 
   // Memoize country code options to prevent re-rendering 200+ items on every keystroke
   const countryOptions = useMemo(() => (

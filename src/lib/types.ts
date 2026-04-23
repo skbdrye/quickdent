@@ -71,6 +71,7 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
   related_appointment_id?: number | null;
+  related_id?: number | null;
 }
 
 export interface AppNotification {
@@ -131,6 +132,7 @@ export interface Prescription {
   diagnosis: string;
   instructions: string;
   image_url?: string | null;
+  images?: string[];
   prescription_date: string;
   created_at?: string;
 }
@@ -149,6 +151,7 @@ export interface Xray {
   group_member_id?: number | null;
   uploaded_by: string;
   image_url: string;
+  images?: string[];
   notes: string;
   xray_date: string;
   created_at?: string;
@@ -165,6 +168,59 @@ export interface StandbyRequest {
   assigned_time?: string | null;
   admin_notes?: string | null;
   created_at?: string;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  med_q1?: string | null;
+  med_q2?: string | null;
+  med_q2_details?: string | null;
+  med_q3?: string | null;
+  med_q3_details?: string | null;
+  med_q4?: string | null;
+  med_q4_details?: string | null;
+  med_q5?: string | null;
+  med_q5_details?: string | null;
+  med_q6?: string | null;
+  med_last_checkup?: string | null;
+  med_other?: string | null;
+  med_consent?: boolean | null;
+  saved_companion_id?: number | null;
+}
+
+export interface SavedCompanion {
+  id: number;
+  owner_id: string;
+  member_name: string;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  relationship?: string | null;
+  med_q1?: string | null;
+  med_q2?: string | null;
+  med_q2_details?: string | null;
+  med_q3?: string | null;
+  med_q3_details?: string | null;
+  med_q4?: string | null;
+  med_q4_details?: string | null;
+  med_q5?: string | null;
+  med_q5_details?: string | null;
+  med_q6?: string | null;
+  med_last_checkup?: string | null;
+  med_other?: string | null;
+  med_consent?: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleOverride {
+  override_date: string;
+  is_open: boolean;
+  open_time?: string | null;
+  close_time?: string | null;
+  break_start?: string | null;
+  break_end?: string | null;
+  reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ClinicScheduleDay {

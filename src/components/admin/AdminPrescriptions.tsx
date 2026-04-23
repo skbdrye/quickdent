@@ -18,6 +18,7 @@ interface PrescriptionRow {
   diagnosis: string | null;
   instructions: string | null;
   image_url: string | null;
+  images?: string[] | null;
   prescribed_by: string;
   prescription_date: string;
   created_at: string;
@@ -25,7 +26,13 @@ interface PrescriptionRow {
   member_name?: string;
 }
 
-export default function AdminPrescriptions() {
+interface AdminPrescriptionsProps {
+  highlightAppointmentId?: number | null;
+  highlightKey?: number;
+}
+
+export default function AdminPrescriptions({ highlightAppointmentId, highlightKey }: AdminPrescriptionsProps = {}) {
+  void highlightAppointmentId; void highlightKey;
   const { toast } = useToast();
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

@@ -54,7 +54,11 @@ export default function UserSettings() {
   const maxDigits = countryCode === '+63' ? 10 : 15;
 
   const handlePhoneInput = (value: string) => {
-    const digits = value.replace(/\D/g, '');
+    let digits = value.replace(/\D/g, '');
+    if (countryCode === '+63') {
+      if (digits.startsWith('0')) digits = digits.slice(1);
+      if (digits.length >= 1 && digits[0] !== '9') digits = '9' + digits.replace(/^9?/, '').slice(0, 9);
+    }
     if (digits.length <= maxDigits) {
       setLocalNumber(digits);
     }
@@ -74,8 +78,8 @@ export default function UserSettings() {
     if (!user || !localNumber.trim()) return;
     if (!phoneHasChanged) return;
 
-    if (countryCode === '+63' && localNumber.length !== 10) {
-      toast({ title: 'Invalid Number', description: 'Philippine phone number must be exactly 10 digits', variant: 'destructive' });
+    if (countryCode === '+63' && !/^9\d{9}$/.test(localNumber)) {
+      toast({ title: 'Invalid Number', description: 'PH mobile must be exactly 10 digits and start with 9 (full local format is 11 digits with leading 0).', variant: 'destructive' });
       return;
     }
 

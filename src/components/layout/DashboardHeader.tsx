@@ -9,9 +9,17 @@ interface DashboardHeaderProps {
   title?: string;
   onNavigateToAppointment?: (appointmentId?: number | null) => void;
   onNavigateToPrescriptions?: (appointmentId?: number | null) => void;
+  onNavigateToXrays?: (appointmentId?: number | null) => void;
+  onNavigateToStandby?: (standbyId?: number | null) => void;
 }
 
-export function DashboardHeader({ title, onNavigateToAppointment, onNavigateToPrescriptions }: DashboardHeaderProps) {
+export function DashboardHeader({
+  title,
+  onNavigateToAppointment,
+  onNavigateToPrescriptions,
+  onNavigateToXrays,
+  onNavigateToStandby,
+}: DashboardHeaderProps) {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
 
@@ -21,7 +29,7 @@ export function DashboardHeader({ title, onNavigateToAppointment, onNavigateToPr
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/80 backdrop-blur-md border-b border-border/50 md:pl-6">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/80 backdrop-blur-md border-b border-border/50 md:pl-6 transition-shadow">
       <div className="flex items-center gap-2 min-w-0">
         <div className="w-7 h-7 rounded-lg overflow-hidden md:hidden shrink-0">
           <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
@@ -36,6 +44,8 @@ export function DashboardHeader({ title, onNavigateToAppointment, onNavigateToPr
         <NotificationBell
           onNavigateToAppointment={onNavigateToAppointment}
           onNavigateToPrescriptions={onNavigateToPrescriptions}
+          onNavigateToXrays={onNavigateToXrays}
+          onNavigateToStandby={onNavigateToStandby}
         />
         {user?.role === 'admin' && (
           <Tooltip>

@@ -2,11 +2,11 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
-import { notificationsAPI } from '@/lib/api';
+import { notificationsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
-import type { ClinicScheduleDay, DashboardPage } from '@/lib/types';
+import type { ClinicScheduleDay, DashboardPage, ScheduleOverride } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 
 function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
@@ -61,6 +61,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState<{ open: boolean; date: string; time: string }>({ open: false, date: '', time: '' });
+  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
 
   useEffect(() => {
     if (user?.id) {
@@ -68,6 +69,7 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       fetchAssessment(user.id);
     }
     fetchSchedule();
+    scheduleOverridesAPI.list().then(setOverrides).catch(() => {});
   }, [user?.id, fetchProfile, fetchAssessment, fetchSchedule]);
 
   const loadBookedSlots = useCallback(async (date: string) => {
@@ -93,17 +95,13 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
     return days;
   }, [firstDay, daysInMonth]);
 
-  const getScheduleForDay = (dayOfWeek: number): ClinicScheduleDay | null => {
-    if (!schedule) return null;
-    return schedule[String(dayOfWeek)] || null;
-  };
+  const getScheduleForDate = (date: string): ClinicScheduleDay | null => getEffectiveDay(date, schedule, overrides).day;
 
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
-    const dayOfWeek = new Date(selectedDate + 'T12:00:00').getDay();
-    return generateTimeSlots(getScheduleForDay(dayOfWeek));
+    return generateTimeSlots(getScheduleForDate(selectedDate));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, schedule]);
+  }, [selectedDate, schedule, overrides]);
 
   const profileReady = isProfileComplete() && isAssessmentSubmitted();
 
@@ -193,29 +191,39 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
               if (day === null) return <div key={`e-${i}`} />;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const isPast = dateStr < todayStr;
+              const eff = getEffectiveDay(dateStr, schedule, overrides);
               const dayOfWeek = new Date(year, month, day).getDay();
-              const scheduleDay = getScheduleForDay(dayOfWeek);
+              const scheduleDay = eff.day;
               const isClosed = scheduleDay ? !scheduleDay.is_open : dayOfWeek === 0;
               const isSelected = dateStr === selectedDate;
               const isToday = dateStr === todayStr;
               const disabled = isPast || isClosed;
+              const isOverride = !!eff.override;
 
               return (
-                <button key={dateStr} disabled={disabled} onClick={() => setSelectedDate(dateStr)} className={cn(
-                  'rounded-lg p-2 text-sm font-medium transition-colors',
+                <button key={dateStr} disabled={disabled} title={isOverride ? eff.override?.reason || (isClosed ? 'Closed' : 'Special hours') : undefined} onClick={() => setSelectedDate(dateStr)} className={cn(
+                  'relative rounded-lg p-2 text-sm font-medium transition-colors',
                   disabled && 'cursor-not-allowed text-muted-foreground/30',
                   !disabled && !isSelected && 'hover:bg-mint text-foreground',
                   isSelected && 'bg-secondary text-secondary-foreground',
                   isToday && !isSelected && 'ring-1 ring-secondary',
                 )}>
                   {day}
+                  {isOverride && (
+                    <span className={cn(
+                      'absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full',
+                      isClosed ? 'bg-destructive' : 'bg-amber-500',
+                    )} />
+                  )}
                 </button>
               );
             })}
           </div>
-          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap gap-3 mt-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-secondary" /> Available</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted" /> Closed</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Special hours</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-destructive" /> Date override (closed)</span>
           </div>
           {selectedDate && (
             <p className="text-sm text-secondary mt-2 font-medium">

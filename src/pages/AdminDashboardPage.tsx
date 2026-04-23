@@ -30,6 +30,12 @@ export default function AdminDashboardPage() {
   const [activePage, setActivePage] = useState<AdminPage>('dashboard');
   const [highlightAppointmentId, setHighlightAppointmentId] = useState<number | null>(null);
   const [highlightKey, setHighlightKey] = useState(0);
+  const [prescriptionHighlightId, setPrescriptionHighlightId] = useState<number | null>(null);
+  const [prescriptionHighlightKey, setPrescriptionHighlightKey] = useState(0);
+  const [xrayHighlightId, setXrayHighlightId] = useState<number | null>(null);
+  const [xrayHighlightKey, setXrayHighlightKey] = useState(0);
+  const [standbyHighlightId, setStandbyHighlightId] = useState<number | null>(null);
+  const [standbyHighlightKey, setStandbyHighlightKey] = useState(0);
   const { fetchNotifications } = useNotificationsStore();
   const navigate = useNavigate();
 
@@ -54,14 +60,29 @@ export default function AdminDashboardPage() {
   }, []);
 
   const handleNavigateToPrescriptions = useCallback((appointmentId?: number | null) => {
+    setPrescriptionHighlightId(appointmentId || null);
+    setPrescriptionHighlightKey(k => k + 1);
     setActivePage('prescriptions');
   }, []);
 
-  // Clear highlight when leaving appointments
+  const handleNavigateToXrays = useCallback((appointmentId?: number | null) => {
+    setXrayHighlightId(appointmentId || null);
+    setXrayHighlightKey(k => k + 1);
+    setActivePage('xrays');
+  }, []);
+
+  const handleNavigateToStandby = useCallback((standbyId?: number | null) => {
+    setStandbyHighlightId(standbyId || null);
+    setStandbyHighlightKey(k => k + 1);
+    setActivePage('standby-queue');
+  }, []);
+
+  // Clear highlights when leaving a page
   useEffect(() => {
-    if (activePage !== 'appointments') {
-      setHighlightAppointmentId(null);
-    }
+    if (activePage !== 'appointments') setHighlightAppointmentId(null);
+    if (activePage !== 'prescriptions') setPrescriptionHighlightId(null);
+    if (activePage !== 'xrays') setXrayHighlightId(null);
+    if (activePage !== 'standby-queue') setStandbyHighlightId(null);
   }, [activePage]);
 
   if (!isAuthenticated || !user || user.role !== 'admin') {
@@ -89,9 +110,9 @@ export default function AdminDashboardPage() {
       case 'patients': return <Suspense fallback={<PageLoader />}><PatientList /></Suspense>;
       case 'schedule': return <Suspense fallback={<PageLoader />}><ClinicSchedule /></Suspense>;
       case 'services': return <Suspense fallback={<PageLoader />}><ServiceManagement /></Suspense>;
-      case 'prescriptions': return <Suspense fallback={<PageLoader />}><AdminPrescriptions /></Suspense>;
-      case 'xrays': return <Suspense fallback={<PageLoader />}><AdminXrays /></Suspense>;
-      case 'standby-queue': return <Suspense fallback={<PageLoader />}><AdminStandbyQueue /></Suspense>;
+      case 'prescriptions': return <Suspense fallback={<PageLoader />}><AdminPrescriptions highlightAppointmentId={prescriptionHighlightId} highlightKey={prescriptionHighlightKey} /></Suspense>;
+      case 'xrays': return <Suspense fallback={<PageLoader />}><AdminXrays highlightAppointmentId={xrayHighlightId} highlightKey={xrayHighlightKey} /></Suspense>;
+      case 'standby-queue': return <Suspense fallback={<PageLoader />}><AdminStandbyQueue highlightId={standbyHighlightId} highlightKey={standbyHighlightKey} /></Suspense>;
       default: return <AdminDashboard onNavigate={setActivePage} />;
     }
   };
@@ -100,7 +121,13 @@ export default function AdminDashboardPage() {
     <div className="flex min-h-screen bg-background">
       <AdminSidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} onNavigateToPrescriptions={handleNavigateToPrescriptions} />
+        <DashboardHeader
+          title={pageTitle()}
+          onNavigateToAppointment={handleNavigateToAppointment}
+          onNavigateToPrescriptions={handleNavigateToPrescriptions}
+          onNavigateToXrays={handleNavigateToXrays}
+          onNavigateToStandby={handleNavigateToStandby}
+        />
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
           {renderPage()}
         </main>

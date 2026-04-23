@@ -20,6 +20,7 @@ interface XrayRow {
   appointment_id: number | null;
   group_member_id: number | null;
   image_url: string;
+  images?: string[] | null;
   notes: string;
   uploaded_by: string;
   xray_date: string;
@@ -28,7 +29,13 @@ interface XrayRow {
   member_name?: string;
 }
 
-export default function AdminXrays() {
+interface AdminXraysProps {
+  highlightAppointmentId?: number | null;
+  highlightKey?: number;
+}
+
+export default function AdminXrays({ highlightAppointmentId, highlightKey }: AdminXraysProps = {}) {
+  void highlightAppointmentId; void highlightKey;
   const { toast } = useToast();
   const [xrays, setXrays] = useState<XrayRow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');

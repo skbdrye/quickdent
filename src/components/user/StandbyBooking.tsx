@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthStore, useStandbyStore, useProfileStore, useAppointmentsStore, useClinicStore } from '@/lib/store';
-import { notificationsAPI } from '@/lib/api';
+import { notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
+import { CompanionPicker } from '@/components/shared/CompanionPicker';
+import { MedicalAssessmentForm, emptyMedical, type MedicalAssessmentFields } from '@/components/shared/MedicalAssessmentForm';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { BookmarkCheck, ChevronDown } from 'lucide-react';
 import {
   Clock, CalendarDays, AlertTriangle, Loader2, X, CheckCircle2, Timer, Ban,
   ChevronLeft, ChevronRight, Info, User as UserIcon, Users,
@@ -20,7 +25,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import type { ClinicScheduleDay } from '@/lib/types';
+import type { ClinicScheduleDay, ScheduleOverride, SavedCompanion } from '@/lib/types';
 
 const MONTHS = [
   { value: '01', label: 'January' }, { value: '02', label: 'February' }, { value: '03', label: 'March' },
@@ -56,7 +61,12 @@ function totalSlotsForSchedule(scheduleDay: ClinicScheduleDay | null): number {
 
 type Mode = 'self' | 'other';
 
-export default function StandbyBooking() {
+interface StandbyBookingProps {
+  highlightId?: number | null;
+  highlightKey?: number;
+}
+
+export default function StandbyBooking({ highlightId, highlightKey }: StandbyBookingProps = {}) {
   const { user } = useAuthStore();
   const { profile, fetchProfile } = useProfileStore();
   const { requests, fetchByUser, addRequest, cancelRequest, isLoading } = useStandbyStore();
@@ -66,18 +76,27 @@ export default function StandbyBooking() {
 
   const [mode, setMode] = useState<Mode>('self');
 
-  // Birthday-style date picker (Year / Month / Day)
+  // Birthday-style date picker for the appointment date (Year / Month / Day)
   const [dateParts, setDateParts] = useState<{ year: string; month: string; day: string }>({ year: '', month: '', day: '' });
 
   // For others
   const [otherName, setOtherName] = useState('');
   const [otherPhone, setOtherPhone] = useState('');
   const [otherRelationship, setOtherRelationship] = useState('');
+  const [otherDob, setOtherDob] = useState({ year: '', month: '', day: '' });
+  const [otherGender, setOtherGender] = useState('');
+  const [otherMedical, setOtherMedical] = useState<MedicalAssessmentFields>({ ...emptyMedical });
+  const [companionPickerOpen, setCompanionPickerOpen] = useState(false);
+  const [selectedCompanionId, setSelectedCompanionId] = useState<number | null>(null);
+  const [showMedical, setShowMedical] = useState(false);
 
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cancelId, setCancelId] = useState<number | null>(null);
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
+  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
+  const [highlightingId, setHighlightingId] = useState<number | null>(null);
+  const requestsRef = useRef<HTMLDivElement>(null);
 
   // Slot availability map for the chosen date
   const [slotInfo, setSlotInfo] = useState<{ total: number; booked: number; loading: boolean } | null>(null);
@@ -85,7 +104,21 @@ export default function StandbyBooking() {
   useEffect(() => {
     if (user?.id) { fetchByUser(user.id); fetchProfile(user.id); }
     fetchSchedule();
+    scheduleOverridesAPI.list().then(setOverrides).catch(() => {});
   }, [user?.id, fetchByUser, fetchProfile, fetchSchedule]);
+
+  // Highlight effect when triggered by notification click
+  useEffect(() => {
+    if (highlightId && highlightKey && highlightKey > 0 && requests.length > 0) {
+      setHighlightingId(highlightId);
+      setTimeout(() => {
+        const el = document.querySelector(`[data-standby-id="${highlightId}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+      const t = setTimeout(() => setHighlightingId(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightId, highlightKey, requests.length]);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -102,9 +135,8 @@ export default function StandbyBooking() {
     let cancelled = false;
     setSlotInfo({ total: 0, booked: 0, loading: true });
     (async () => {
-      const dow = new Date(selectedDate + 'T12:00:00').getDay();
-      const scheduleDay = schedule[String(dow)] || null;
-      const total = totalSlotsForSchedule(scheduleDay);
+      const eff = getEffectiveDay(selectedDate, schedule, overrides);
+      const total = totalSlotsForSchedule(eff.day);
       try {
         const booked = await fetchBookedSlots(selectedDate);
         if (!cancelled) setSlotInfo({ total, booked: booked.length, loading: false });
@@ -113,12 +145,14 @@ export default function StandbyBooking() {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedDate, schedule, fetchBookedSlots]);
+  }, [selectedDate, schedule, fetchBookedSlots, overrides]);
 
   const isPastDate = !!selectedDate && selectedDate < todayStr;
-  const dayOfWeek = selectedDate ? new Date(selectedDate + 'T12:00:00').getDay() : null;
-  const scheduleForDay = dayOfWeek !== null && schedule ? schedule[String(dayOfWeek)] : null;
-  const isClosed = !!selectedDate && (!scheduleForDay || !scheduleForDay.is_open);
+  const effectiveDay = useMemo(
+    () => selectedDate ? getEffectiveDay(selectedDate, schedule, overrides) : { day: null, override: null },
+    [selectedDate, schedule, overrides],
+  );
+  const isClosed = !!selectedDate && (!effectiveDay.day || !effectiveDay.day.is_open);
   const isFullyBooked = !!slotInfo && !slotInfo.loading && slotInfo.total > 0 && slotInfo.booked >= slotInfo.total;
   const dateUsable = !!selectedDate && !isPastDate && !isClosed && isFullyBooked;
 
@@ -150,6 +184,11 @@ export default function StandbyBooking() {
     setOtherName('');
     setOtherPhone('');
     setOtherRelationship('');
+    setOtherDob({ year: '', month: '', day: '' });
+    setOtherGender('');
+    setOtherMedical({ ...emptyMedical });
+    setSelectedCompanionId(null);
+    setShowMedical(false);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -180,8 +219,16 @@ export default function StandbyBooking() {
         toast({ title: 'Name required', description: 'Please enter the patient name.', variant: 'destructive' });
         return;
       }
-      if (!otherPhone.trim()) {
-        toast({ title: 'Phone required', description: 'Phone number is required when booking for someone else.', variant: 'destructive' });
+      if (!isValidPHPhone(otherPhone.trim())) {
+        toast({ title: 'Invalid phone', description: 'Phone must be 11 digits and start with 09.', variant: 'destructive' });
+        return;
+      }
+      if (!otherDob.year || !otherDob.month || !otherDob.day) {
+        toast({ title: 'Date of birth required', description: 'Please provide the patient\u2019s date of birth.', variant: 'destructive' });
+        return;
+      }
+      if (!otherGender) {
+        toast({ title: 'Gender required', description: 'Please select the patient\u2019s gender.', variant: 'destructive' });
         return;
       }
     }
@@ -196,6 +243,8 @@ export default function StandbyBooking() {
       ? `[For ${otherRelationship || 'unregistered patient'}] ${reason.trim()}`
       : reason.trim();
 
+    const otherDobStr = mode === 'other' ? `${otherDob.year}-${otherDob.month.padStart(2, '0')}-${otherDob.day.padStart(2, '0')}` : null;
+
     setSubmitting(true);
     try {
       await addRequest({
@@ -205,7 +254,46 @@ export default function StandbyBooking() {
         preferred_date: selectedDate,
         reason: reasonFinal,
         status: 'Waiting',
+        ...(mode === 'other' && {
+          date_of_birth: otherDobStr,
+          gender: otherGender,
+          med_q1: otherMedical.med_q1,
+          med_q2: otherMedical.med_q2,
+          med_q2_details: otherMedical.med_q2_details,
+          med_q3: otherMedical.med_q3,
+          med_q3_details: otherMedical.med_q3_details,
+          med_q4: otherMedical.med_q4,
+          med_q4_details: otherMedical.med_q4_details,
+          med_q5: otherMedical.med_q5,
+          med_q5_details: otherMedical.med_q5_details,
+          med_q6: otherMedical.med_q6,
+          med_last_checkup: otherMedical.med_last_checkup,
+          med_other: otherMedical.med_other,
+          med_consent: otherMedical.med_consent,
+          saved_companion_id: selectedCompanionId,
+        }),
       });
+
+      // Save companion profile (best-effort) for future quick-fills
+      if (mode === 'other') {
+        companionsAPI.upsert({
+          owner_id: user.id,
+          member_name: otherName.trim(),
+          date_of_birth: otherDobStr,
+          gender: otherGender || null,
+          phone: otherPhone.trim() || null,
+          relationship: otherRelationship || null,
+          med_q1: otherMedical.med_q1,
+          med_q2: otherMedical.med_q2, med_q2_details: otherMedical.med_q2_details,
+          med_q3: otherMedical.med_q3, med_q3_details: otherMedical.med_q3_details,
+          med_q4: otherMedical.med_q4, med_q4_details: otherMedical.med_q4_details,
+          med_q5: otherMedical.med_q5, med_q5_details: otherMedical.med_q5_details,
+          med_q6: otherMedical.med_q6,
+          med_last_checkup: otherMedical.med_last_checkup,
+          med_other: otherMedical.med_other,
+          med_consent: otherMedical.med_consent,
+        }).catch(() => {});
+      }
 
       await notificationsAPI.notifyAdmins(
         'New Standby Request',
@@ -331,26 +419,89 @@ export default function StandbyBooking() {
                 <Input value={ownerPatientName} disabled className="mt-1.5 bg-muted" />
               </div>
             ) : (
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="other-name">Patient name *</Label>
-                  <Input id="other-name" value={otherName} onChange={(e) => setOtherName(e.target.value)} placeholder="Full name" className="mt-1.5" />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patient Details</p>
+                  {user?.id && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() => setCompanionPickerOpen(true)}
+                    >
+                      <BookmarkCheck className="w-3.5 h-3.5" /> Use saved companion
+                    </Button>
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="other-phone">Phone number *</Label>
-                  <Input id="other-phone" value={otherPhone} onChange={(e) => setOtherPhone(e.target.value)} placeholder="e.g. 09171234567" className="mt-1.5" inputMode="tel" />
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="other-name">Patient name *</Label>
+                    <Input id="other-name" value={otherName} onChange={(e) => setOtherName(e.target.value.slice(0, 60))} placeholder="Full name" className="mt-1.5" />
+                  </div>
+                  <div>
+                    <Label htmlFor="other-phone">Phone number *</Label>
+                    <PhoneInput value={otherPhone} onChange={setOtherPhone} className="mt-1.5" />
+                  </div>
+                  <div>
+                    <Label htmlFor="other-rel">Relationship</Label>
+                    <Select value={otherRelationship} onValueChange={setOtherRelationship}>
+                      <SelectTrigger id="other-rel" className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        {['Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'].map(r => (
+                          <SelectItem key={r} value={r}>{r}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label>Date of birth *</Label>
+                    <div className="grid grid-cols-3 gap-2 mt-1.5">
+                      <Select value={otherDob.month} onValueChange={(v) => setOtherDob(p => ({ ...p, month: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
+                        <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                      <Select value={otherDob.day} onValueChange={(v) => setOtherDob(p => ({ ...p, day: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
+                            <SelectItem key={d} value={d}>{Number(d)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={otherDob.year} onValueChange={(v) => setOtherDob(p => ({ ...p, year: v }))}>
+                        <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Gender *</Label>
+                    <Select value={otherGender} onValueChange={setOtherGender}>
+                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="other-rel">Relationship</Label>
-                  <Select value={otherRelationship} onValueChange={setOtherRelationship}>
-                    <SelectTrigger id="other-rel" className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
-                    <SelectContent>
-                      {['Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'].map(r => (
-                        <SelectItem key={r} value={r}>{r}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                <Collapsible open={showMedical} onOpenChange={setShowMedical}>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" className="w-full justify-between gap-2 text-xs">
+                      <span>{showMedical ? 'Hide' : 'Add'} medical history (optional but recommended)</span>
+                      <ChevronDown className={cn('w-4 h-4 transition-transform', showMedical && 'rotate-180')} />
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">
+                    <MedicalAssessmentForm value={otherMedical} onChange={setOtherMedical} />
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
             )}
 
@@ -412,7 +563,7 @@ export default function StandbyBooking() {
       </Card>
 
       {/* My Requests */}
-      <div>
+      <div ref={requestsRef}>
         <h3 className="font-semibold text-foreground mb-3">My standby requests</h3>
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -432,7 +583,14 @@ export default function StandbyBooking() {
               const config = statusConfig[req.status] || statusConfig.Waiting;
               const StatusIcon = config.icon;
               return (
-                <Card key={req.id} className="border-border/50 overflow-hidden">
+                <Card
+                  key={req.id}
+                  data-standby-id={req.id}
+                  className={cn(
+                    'border-border/50 overflow-hidden transition-all duration-300',
+                    highlightingId === req.id && 'ring-2 ring-secondary ring-offset-2 shadow-md',
+                  )}
+                >
                   <CardContent className="p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-start gap-3">
@@ -509,6 +667,39 @@ export default function StandbyBooking() {
         description={successModal.description}
         onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
       />
+
+      {user?.id && (
+        <CompanionPicker
+          open={companionPickerOpen}
+          ownerId={user.id}
+          onClose={() => setCompanionPickerOpen(false)}
+          onPick={(c: SavedCompanion) => {
+            setSelectedCompanionId(c.id);
+            setOtherName(c.member_name);
+            setOtherPhone(c.phone || '');
+            setOtherRelationship(c.relationship || '');
+            setOtherGender(c.gender || '');
+            if (c.date_of_birth) {
+              const [y, mo, d] = c.date_of_birth.split('-');
+              setOtherDob({ year: y || '', month: mo || '', day: d || '' });
+            }
+            setOtherMedical({
+              med_q1: c.med_q1 || '',
+              med_q2: c.med_q2 || '', med_q2_details: c.med_q2_details || '',
+              med_q3: c.med_q3 || '', med_q3_details: c.med_q3_details || '',
+              med_q4: c.med_q4 || '', med_q4_details: c.med_q4_details || '',
+              med_q5: c.med_q5 || '', med_q5_details: c.med_q5_details || '',
+              med_q6: c.med_q6 || '',
+              med_last_checkup: c.med_last_checkup || '',
+              med_other: c.med_other || '',
+              med_consent: !!c.med_consent,
+            });
+            setShowMedical(true);
+            setCompanionPickerOpen(false);
+            toast({ title: 'Companion loaded', description: `${c.member_name}'s info auto-filled.` });
+          }}
+        />
+      )}
     </div>
   );
 }

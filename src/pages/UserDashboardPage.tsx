@@ -36,6 +36,10 @@ export default function UserDashboardPage() {
   const [highlightKey, setHighlightKey] = useState(0);
   const [prescriptionHighlightId, setPrescriptionHighlightId] = useState<number | null>(null);
   const [prescriptionHighlightKey, setPrescriptionHighlightKey] = useState(0);
+  const [xrayHighlightId, setXrayHighlightId] = useState<number | null>(null);
+  const [xrayHighlightKey, setXrayHighlightKey] = useState(0);
+  const [standbyHighlightId, setStandbyHighlightId] = useState<number | null>(null);
+  const [standbyHighlightKey, setStandbyHighlightKey] = useState(0);
   const { fetchNotifications } = useNotificationsStore();
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
   const navigate = useNavigate();
@@ -74,6 +78,18 @@ export default function UserDashboardPage() {
     setActivePage('prescriptions');
   }, []);
 
+  const handleNavigateToXrays = useCallback((appointmentId?: number | null) => {
+    setXrayHighlightId(appointmentId || null);
+    setXrayHighlightKey(k => k + 1);
+    setActivePage('xrays');
+  }, []);
+
+  const handleNavigateToStandby = useCallback((standbyId?: number | null) => {
+    setStandbyHighlightId(standbyId || null);
+    setStandbyHighlightKey(k => k + 1);
+    setActivePage('standby');
+  }, []);
+
   const handleNavigateToMyAppointments = useCallback((appointmentId?: number) => {
     setHighlightAppointmentId(appointmentId || null);
     setHighlightKey(k => k + 1);
@@ -82,12 +98,10 @@ export default function UserDashboardPage() {
 
   // Clear highlights when leaving the pages
   useEffect(() => {
-    if (activePage !== 'my-appointments') {
-      setHighlightAppointmentId(null);
-    }
-    if (activePage !== 'prescriptions') {
-      setPrescriptionHighlightId(null);
-    }
+    if (activePage !== 'my-appointments') setHighlightAppointmentId(null);
+    if (activePage !== 'prescriptions') setPrescriptionHighlightId(null);
+    if (activePage !== 'xrays') setXrayHighlightId(null);
+    if (activePage !== 'standby') setStandbyHighlightId(null);
   }, [activePage]);
 
   if (!isAuthenticated || !user || user.role !== 'user') {
@@ -118,8 +132,8 @@ export default function UserDashboardPage() {
       case 'my-appointments': return <UserAppointments highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} />;
       case 'services': return <Suspense fallback={<PageLoader />}><ServicesDisplay /></Suspense>;
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><PrescriptionsView highlightAppointmentId={prescriptionHighlightId} highlightKey={prescriptionHighlightKey} /></Suspense>;
-      case 'xrays': return <Suspense fallback={<PageLoader />}><XraysView /></Suspense>;
-      case 'standby': return <Suspense fallback={<PageLoader />}><StandbyBooking /></Suspense>;
+      case 'xrays': return <Suspense fallback={<PageLoader />}><XraysView highlightAppointmentId={xrayHighlightId} highlightKey={xrayHighlightKey} /></Suspense>;
+      case 'standby': return <Suspense fallback={<PageLoader />}><StandbyBooking highlightId={standbyHighlightId} highlightKey={standbyHighlightKey} /></Suspense>;
       case 'profile': return <Suspense fallback={<PageLoader />}><PatientProfile onNavigate={setActivePage} /></Suspense>;
       case 'settings': return <Suspense fallback={<PageLoader />}><UserSettings /></Suspense>;
       default: return <UserDashboard onNavigate={setActivePage} onViewAppointment={handleNavigateToMyAppointments} />;
@@ -130,7 +144,13 @@ export default function UserDashboardPage() {
     <div className="flex min-h-screen bg-background">
       <UserSidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader title={pageTitle()} onNavigateToAppointment={handleNavigateToAppointment} onNavigateToPrescriptions={handleNavigateToPrescriptions} />
+        <DashboardHeader
+          title={pageTitle()}
+          onNavigateToAppointment={handleNavigateToAppointment}
+          onNavigateToPrescriptions={handleNavigateToPrescriptions}
+          onNavigateToXrays={handleNavigateToXrays}
+          onNavigateToStandby={handleNavigateToStandby}
+        />
         <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
           {renderPage()}
         </main>

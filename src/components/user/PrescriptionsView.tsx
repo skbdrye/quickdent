@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/lib/store';
-import { FileText, Download, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
+import { FileText, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
+import { ImageGallery } from '@/components/shared/ImageGallery';
 
 interface Prescription {
   id: number;
@@ -14,10 +15,18 @@ interface Prescription {
   diagnosis: string | null;
   instructions: string | null;
   image_url: string | null;
+  images?: string[] | null;
   prescribed_by: string;
   prescription_date: string;
   group_member_id: number | null;
   appointment_id: number | null;
+}
+
+function combinedImages(rx: Prescription): string[] {
+  const list: string[] = [];
+  if (Array.isArray(rx.images)) list.push(...rx.images);
+  if (rx.image_url && !list.includes(rx.image_url)) list.push(rx.image_url);
+  return list.filter(Boolean);
 }
 
 interface GroupMemberPrescription extends Prescription {
@@ -44,7 +53,6 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
   const { user } = useAuthStore();
   const [appointmentGroups, setAppointmentGroups] = useState<AppointmentGroup[]>([]);
   const [viewingPrescriptions, setViewingPrescriptions] = useState<GroupMemberPrescription[] | null>(null);
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [highlightingId, setHighlightingId] = useState<number | null>(null);
 
@@ -168,23 +176,6 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
     if (user) loadPrescriptions();
   }, [user, loadPrescriptions]);
 
-  const handleDownload = async (imageUrl: string, rxId: number) => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `prescription_${rxId}.${blob.type.split('/')[1] || 'jpg'}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      window.open(imageUrl, '_blank');
-    }
-  };
-
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
       <div>
@@ -305,37 +296,17 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
                     )}
                   </div>
 
-                  {/* Image or text content */}
-                  {rx.image_url ? (
-                    <div>
-                      <div
-                        className="relative cursor-pointer group bg-white"
-                        onClick={() => setViewingImage(rx.image_url)}
-                      >
-                        <img
-                          src={rx.image_url}
-                          alt="Prescription"
-                          className="w-full max-h-72 object-contain"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2 shadow-lg">
-                            <Eye className="w-5 h-5 text-foreground" />
-                          </div>
+                  {/* Image(s) or text content */}
+                  {(() => {
+                    const imgs = combinedImages(rx);
+                    if (imgs.length > 0) {
+                      return (
+                        <div className="p-3">
+                          <ImageGallery images={imgs} size="md" />
                         </div>
-                      </div>
-                      <div className="p-2.5 flex items-center justify-end border-t border-border/30 bg-muted/20">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs h-8"
-                          onClick={() => handleDownload(rx.image_url!, rx.id)}
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
+                      );
+                    }
+                    return (
                     <div className="p-4 space-y-2 text-sm">
                       {rx.diagnosis && (
                         <div>
@@ -354,32 +325,11 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ))}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Full-Size Image Viewer - No print button */}
-      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
-        <DialogContent className="max-w-4xl p-2">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="flex items-center justify-between">
-              <span>Prescription</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 mr-6"
-                onClick={() => viewingImage && handleDownload(viewingImage, 0)}
-              >
-                <Download className="h-3 w-3" /> Save
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          {viewingImage && (
-            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
           )}
         </DialogContent>
       </Dialog>

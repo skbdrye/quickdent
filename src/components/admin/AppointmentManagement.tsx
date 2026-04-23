@@ -16,6 +16,8 @@ import { appointmentsAPI, notificationsAPI, servicesAPI, xraysAPI } from '@/lib/
 import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { MultiImageUpload, type PickedFile, uploadFilesParallel } from '@/components/shared/MultiImageUpload';
+import { ImageGallery } from '@/components/shared/ImageGallery';
 import { cn, formatTime } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -97,6 +99,7 @@ interface Prescription {
   prescription_date: string;
   group_member_id: number | null;
   image_url: string | null;
+  images?: string[] | null;
 }
 
 function calculateAge(dob: string): number {
@@ -136,9 +139,11 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   const [prescribedBy, setPrescribedBy] = useState('Dr. Admin');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [rxImages, setRxImages] = useState<PickedFile[]>([]);
+  const [xrayImages, setXrayImages] = useState<PickedFile[]>([]);
 
   // ---- X-Ray upload state (parallel to prescriptions) ----
-  const [xrays, setXrays] = useState<Array<{ id: number; image_url: string; uploaded_by: string; xray_date: string; notes: string; group_member_id: number | null }>>([]);
+  const [xrays, setXrays] = useState<Array<{ id: number; image_url: string; images?: string[] | null; uploaded_by: string; xray_date: string; notes: string; group_member_id: number | null }>>([]);
   const [showXrayForm, setShowXrayForm] = useState(false);
   const [xrayTarget, setXrayTarget] = useState<{ userId: string; appointmentId: number; groupMemberId?: number; memberName?: string }>({ userId: '', appointmentId: 0 });
   const [xrayImage, setXrayImage] = useState<File | null>(null);
@@ -304,43 +309,40 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   }
 
   async function submitPrescription() {
-    if (!selectedImage) {
-      toast({ title: 'Error', description: 'Please select a prescription image', variant: 'destructive' });
+    const allFiles = rxImages.length > 0 ? rxImages : (selectedImage ? [{ id: 'legacy', file: selectedImage, url: imagePreview || '' } as PickedFile] : []);
+    if (allFiles.length === 0) {
+      toast({ title: 'Pick at least one image', description: 'Please select one or more prescription images', variant: 'destructive' });
       return;
     }
     setUploading(true);
     try {
-      // 1. Upload image to Supabase storage first - sanitised filename only
-      const ext = (selectedImage.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const fileName = `prescription_${prescriptionTarget.appointmentId}_${Date.now()}.${ext}`;
-      const filePath = `prescriptions/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('prescriptions')
-        .upload(filePath, selectedImage, { upsert: true });
-
-      let imageUrl: string | null = null;
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage
+      // Upload all images to Supabase storage in parallel
+      const uploaded = await uploadFilesParallel(allFiles, async (file, idx) => {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const fileName = `prescription_${prescriptionTarget.appointmentId}_${Date.now()}_${idx}.${ext}`;
+        const filePath = `prescriptions/${fileName}`;
+        const { error: uploadError } = await supabase.storage
           .from('prescriptions')
-          .getPublicUrl(filePath);
-        imageUrl = urlData.publicUrl;
-      }
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('prescriptions').getPublicUrl(filePath);
+        return urlData.publicUrl;
+      });
 
-      // 2. Create prescription record with image_url
       const insertData = {
         user_id: prescriptionTarget.userId,
         appointment_id: prescriptionTarget.appointmentId,
-        medications: prescriptionTarget.memberName ? `Prescription for ${prescriptionTarget.memberName}` : 'Prescription image uploaded',
+        medications: prescriptionTarget.memberName ? `Prescription for ${prescriptionTarget.memberName}` : `Prescription image${uploaded.length > 1 ? 's' : ''} uploaded`,
         diagnosis: '',
         instructions: '',
         prescribed_by: prescribedBy,
         prescription_date: new Date().toISOString().split('T')[0],
-        image_url: imageUrl,
+        image_url: uploaded[0] || null,
+        images: uploaded,
         ...(prescriptionTarget.groupMemberId && { group_member_id: prescriptionTarget.groupMemberId }),
       };
 
-      const { error: rxError } = await supabase.from('prescriptions').insert(insertData).select().single();
+      const { data: rxRow, error: rxError } = await supabase.from('prescriptions').insert(insertData).select().single();
       if (rxError) throw new Error('Failed to create prescription record');
 
       // Notify the patient about the new prescription
@@ -350,15 +352,17 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
         message: `A prescription has been uploaded${prescriptionTarget.memberName ? ` for ${prescriptionTarget.memberName}` : ''}. View it in your Prescriptions tab.`,
         type: 'prescription',
         related_appointment_id: prescriptionTarget.appointmentId,
+        related_id: (rxRow as { id?: number } | null)?.id ?? null,
       });
 
-      toast({ title: 'Success', description: 'Prescription saved successfully' });
+      toast({ title: 'Success', description: `${uploaded.length} image${uploaded.length > 1 ? 's' : ''} saved` });
       setSuccessModal({ open: true, title: 'Prescription Uploaded', description: 'The prescription has been saved and the patient has been notified.' });
 
       const { data: updatedRx } = await supabase.from('prescriptions').select('*').eq('appointment_id', prescriptionTarget.appointmentId).order('prescription_date', { ascending: false });
       setPrescriptions((updatedRx || []) as unknown as Prescription[]);
       setSelectedImage(null);
       setImagePreview(null);
+      setRxImages([]);
       setPrescribedBy('Dr. Admin');
       setShowPrescriptionForm(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -404,47 +408,48 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
   }
 
   async function submitXray() {
-    if (!xrayImage) {
-      toast({ title: 'Pick an image', description: 'Please choose an x-ray image to upload.', variant: 'destructive' });
+    const allFiles = xrayImages.length > 0 ? xrayImages : (xrayImage ? [{ id: 'legacy', file: xrayImage, url: xrayPreview || '' } as PickedFile] : []);
+    if (allFiles.length === 0) {
+      toast({ title: 'Pick at least one image', description: 'Please choose one or more x-ray images to upload.', variant: 'destructive' });
       return;
     }
     setUploading(true);
     try {
-      // 1. Upload file to storage. Sanitised filename - never use raw file.name
-      // (which is what was leaking the "image.png" toast/notification).
-      const ext = (xrayImage.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const fileName = `xray_${xrayTarget.appointmentId}_${Date.now()}.${ext}`;
-      const filePath = `xrays/${fileName}`;
+      const uploaded = await uploadFilesParallel(allFiles, async (file, idx) => {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const fileName = `xray_${xrayTarget.appointmentId}_${Date.now()}_${idx}.${ext}`;
+        const filePath = `xrays/${fileName}`;
+        const { error: uploadError } = await supabase.storage
+          .from('xrays')
+          .upload(filePath, file, { upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('xrays').getPublicUrl(filePath);
+        return urlData.publicUrl;
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from('xrays')
-        .upload(filePath, xrayImage, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('xrays').getPublicUrl(filePath);
-      const imageUrl = urlData.publicUrl;
-
-      // 2. Insert xray record via typed API helper
-      const xrayRow: Omit<import('@/lib/types').Xray, 'id' | 'created_at'> = {
+      const xrayRow = {
         user_id: xrayTarget.userId,
         appointment_id: xrayTarget.appointmentId,
         uploaded_by: xrayUploadedBy || 'Dr. Admin',
-        image_url: imageUrl,
+        image_url: uploaded[0],
+        images: uploaded,
         notes: xrayNotes || '',
         xray_date: new Date().toISOString().split('T')[0],
         ...(xrayTarget.groupMemberId ? { group_member_id: xrayTarget.groupMemberId } : {}),
       };
-      await xraysAPI.create(xrayRow);
+      const { data: xRow, error: xErr } = await supabase.from('xrays').insert(xrayRow as never).select().single();
+      if (xErr) throw xErr;
 
-      // Use a generic message - never reveal raw file name to the patient.
       await notificationsAPI.create({
         user_id: xrayTarget.userId,
         title: 'New X-Ray Available',
         message: `An x-ray has been uploaded${xrayTarget.memberName ? ` for ${xrayTarget.memberName}` : ''}. View it in your X-Rays tab.`,
         type: 'xray',
         related_appointment_id: xrayTarget.appointmentId,
+        related_id: (xRow as { id?: number } | null)?.id ?? null,
       });
 
-      toast({ title: 'X-ray uploaded', description: 'The x-ray has been saved and the patient has been notified.' });
+      toast({ title: 'X-ray uploaded', description: `${uploaded.length} image${uploaded.length > 1 ? 's' : ''} saved` });
       setSuccessModal({ open: true, title: 'X-Ray Uploaded', description: 'The x-ray has been saved and the patient has been notified.' });
 
       const updated = await xraysAPI.fetchByAppointment(xrayTarget.appointmentId).catch(() => []);
@@ -452,6 +457,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
 
       setXrayImage(null);
       setXrayPreview(null);
+      setXrayImages([]);
       setXrayNotes('');
       setShowXrayForm(false);
       if (xrayFileInputRef.current) xrayFileInputRef.current.value = '';
@@ -492,7 +498,16 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                           apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
     return matchesSearch && matchesStatus;
-  }).sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
+  }).sort((a, b) => {
+    const so = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+    if (so !== 0) return so;
+    const dateA = `${a.appointment_date} ${a.appointment_time || ''}`;
+    const dateB = `${b.appointment_date} ${b.appointment_time || ''}`;
+    const ascStatuses = new Set(['Pending', 'Confirmed']);
+    const cmp = dateA.localeCompare(dateB);
+    // Pending/Confirmed sorted ascending (soonest first); past statuses descending (most recent first)
+    return ascStatuses.has(a.status) ? cmp : -cmp;
+  });
 
   function getStatusVariant(status: string) {
     switch (status) {
@@ -930,15 +945,16 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                             </div>
                             <span className="text-xs text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </div>
-                          {rx.image_url && (
-                            <div className="cursor-pointer border-t border-border/30 hover:opacity-90 transition-opacity" onClick={() => setViewingImage(rx.image_url)}>
-                              <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
-                              <p className="text-center py-1.5 text-[11px] text-muted-foreground bg-muted/20">Click to view full size</p>
-                            </div>
-                          )}
-                          {!rx.image_url && rx.medications && (
-                            <div className="px-3 pb-3 text-sm text-muted-foreground border-t border-border/30 pt-2">{rx.medications}</div>
-                          )}
+                          {(() => {
+                            const imgs = [...(rx.images || []), ...(rx.image_url && !(rx.images || []).includes(rx.image_url) ? [rx.image_url] : [])].filter(Boolean) as string[];
+                            return imgs.length > 0 ? (
+                              <div className="p-3 border-t border-border/30">
+                                <ImageGallery images={imgs} size="sm" />
+                              </div>
+                            ) : (rx.medications && (
+                              <div className="px-3 pb-3 text-sm text-muted-foreground border-t border-border/30 pt-2">{rx.medications}</div>
+                            ));
+                          })()}
                         </div>
                       );
                     })}
@@ -973,12 +989,14 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                             </div>
                             <span className="text-xs text-muted-foreground">{new Date(x.xray_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                           </div>
-                          {x.image_url && (
-                            <div className="cursor-pointer border-t border-border/30 hover:opacity-90 transition-opacity" onClick={() => setViewingImage(x.image_url)}>
-                              <img src={x.image_url} alt="X-Ray" className="w-full max-h-48 object-contain bg-black" />
-                              <p className="text-center py-1.5 text-[11px] text-muted-foreground bg-muted/20">Click to view full size</p>
-                            </div>
-                          )}
+                          {(() => {
+                            const imgs = [...(x.images || []), ...(x.image_url && !(x.images || []).includes(x.image_url) ? [x.image_url] : [])].filter(Boolean) as string[];
+                            return imgs.length > 0 && (
+                              <div className="p-3 border-t border-border/30">
+                                <ImageGallery images={imgs} size="sm" />
+                              </div>
+                            );
+                          })()}
                           {x.notes && (
                             <div className="px-3 pb-3 text-xs text-muted-foreground border-t border-border/30 pt-2">{x.notes}</div>
                           )}
@@ -1010,27 +1028,18 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
               <Input value={prescribedBy} onChange={(e) => setPrescribedBy(e.target.value)} placeholder="Doctor name" />
             </div>
             <div>
-              <Label>Prescription Image *</Label>
-              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the prescription (RX)</p>
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
-              {!imagePreview ? (
-                <button onClick={() => fileInputRef.current?.click()} className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group">
-                  <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-2 group-hover:text-secondary transition-colors" />
-                  <p className="text-sm font-medium text-foreground">Click to select image</p>
-                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 10MB</p>
-                </button>
-              ) : (
-                <div className="relative rounded-lg overflow-hidden border border-border">
-                  <img src={imagePreview} alt="Preview" className="w-full max-h-64 object-contain bg-card" />
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => fileInputRef.current?.click()} title="Replace"><Upload className="h-3 w-3" /></Button>
-                    <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} title="Remove"><X className="h-3 w-3" /></Button>
-                  </div>
-                </div>
-              )}
+              <Label>Prescription Images *</Label>
+              <p className="text-xs text-muted-foreground mb-2">Upload one or more photos / scans of the prescription (RX)</p>
+              <MultiImageUpload
+                value={rxImages}
+                onChange={setRxImages}
+                maxFiles={10}
+                maxSizeMB={10}
+                label="Drag prescriptions here or click to upload"
+              />
             </div>
-            <Button onClick={submitPrescription} className="w-full gap-2" disabled={uploading || !selectedImage}>
-              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload Prescription</>}
+            <Button onClick={submitPrescription} className="w-full gap-2" disabled={uploading || rxImages.length === 0}>
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload {rxImages.length > 0 ? `${rxImages.length} ` : ''}Prescription{rxImages.length > 1 ? 's' : ''}</>}
             </Button>
           </div>
         </DialogContent>
@@ -1057,27 +1066,18 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
               <Input value={xrayNotes} onChange={(e) => setXrayNotes(e.target.value)} placeholder="e.g. Bitewing x-ray, lower-right molar" />
             </div>
             <div>
-              <Label>X-Ray Image *</Label>
-              <p className="text-xs text-muted-foreground mb-2">Upload a photo or scan of the x-ray</p>
-              <input ref={xrayFileInputRef} type="file" accept="image/*" onChange={handleXrayFileSelect} className="hidden" />
-              {!xrayPreview ? (
-                <button type="button" onClick={() => xrayFileInputRef.current?.click()} className="w-full border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-secondary/50 transition-colors group">
-                  <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-2 group-hover:text-secondary transition-colors" />
-                  <p className="text-sm font-medium text-foreground">Click to select image</p>
-                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG up to 15MB</p>
-                </button>
-              ) : (
-                <div className="relative rounded-lg overflow-hidden border border-border">
-                  <img src={xrayPreview} alt="Preview" className="w-full max-h-64 object-contain bg-black" />
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <Button variant="secondary" size="icon" className="h-7 w-7" onClick={() => xrayFileInputRef.current?.click()} title="Replace"><Upload className="h-3 w-3" /></Button>
-                    <Button variant="destructive" size="icon" className="h-7 w-7" onClick={() => { setXrayImage(null); setXrayPreview(null); if (xrayFileInputRef.current) xrayFileInputRef.current.value = ''; }} title="Remove"><X className="h-3 w-3" /></Button>
-                  </div>
-                </div>
-              )}
+              <Label>X-Ray Images *</Label>
+              <p className="text-xs text-muted-foreground mb-2">Upload one or more photos / scans of the x-ray</p>
+              <MultiImageUpload
+                value={xrayImages}
+                onChange={setXrayImages}
+                maxFiles={10}
+                maxSizeMB={15}
+                label="Drag x-rays here or click to upload"
+              />
             </div>
-            <Button onClick={submitXray} className="w-full gap-2" disabled={uploading || !xrayImage}>
-              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload X-Ray</>}
+            <Button onClick={submitXray} className="w-full gap-2" disabled={uploading || xrayImages.length === 0}>
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</> : <><Upload className="h-4 w-4" /> Upload {xrayImages.length > 0 ? `${xrayImages.length} ` : ''}X-Ray{xrayImages.length > 1 ? 's' : ''}</>}
             </Button>
           </div>
         </DialogContent>

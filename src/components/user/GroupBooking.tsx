@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
-import { groupMembersAPI, notificationsAPI } from '@/lib/api';
+import { groupMembersAPI, notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, BookmarkCheck } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
-import type { GroupMember, ClinicScheduleDay, DashboardPage } from '@/lib/types';
+import type { GroupMember, ClinicScheduleDay, DashboardPage, ScheduleOverride, SavedCompanion } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
+import { CompanionPicker } from '@/components/shared/CompanionPicker';
 
 const RELATIONSHIPS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend'];
 
@@ -76,6 +78,8 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   const [expandedMember, setExpandedMember] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState<{ open: boolean; count: number; date: string }>({ open: false, count: 0, date: '' });
+  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
+  const [companionPickerFor, setCompanionPickerFor] = useState<number | null>(null);
   const membersCardRef = useRef<HTMLDivElement>(null);
 
   // Per-member DOB parts so partial selection persists
@@ -119,6 +123,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   useEffect(() => {
     if (user?.id) { fetchProfile(user.id); fetchAssessment(user.id); }
     fetchSchedule();
+    scheduleOverridesAPI.list().then(setOverrides).catch(() => {});
   }, [user?.id, fetchProfile, fetchAssessment, fetchSchedule]);
 
   const loadBookedSlots = useCallback(async (date: string) => {
@@ -178,14 +183,13 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
     return days;
   }, [firstDay, daysInMonth]);
 
-  const getScheduleForDay = (dow: number): ClinicScheduleDay | null => schedule?.[String(dow)] || null;
+  const getScheduleForDate = (date: string): ClinicScheduleDay | null => getEffectiveDay(date, schedule, overrides).day;
 
   const timeSlots = useMemo(() => {
     if (!selectedDate) return [];
-    const dow = new Date(selectedDate + 'T12:00:00').getDay();
-    return generateTimeSlots(getScheduleForDay(dow));
+    return generateTimeSlots(getScheduleForDate(selectedDate));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, schedule]);
+  }, [selectedDate, schedule, overrides]);
 
   const updateMember = (index: number, data: Partial<Omit<GroupMember, 'id' | 'appointment_id'>>) => {
     setMembers(prev => prev.map((m, i) => i === index ? { ...m, ...data } : m));
@@ -239,10 +243,18 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         return;
       }
       // Phone is required when booking for someone else (non-self members)
-      if (m.relationship !== 'Self' && !(m.phone || '').trim()) {
-        toast({ title: 'Phone required', description: `Please provide a phone number for member ${i + 1}.`, variant: 'destructive' });
-        setExpandedMember(i);
-        return;
+      if (m.relationship !== 'Self') {
+        const ph = (m.phone || '').trim();
+        if (!ph) {
+          toast({ title: 'Phone required', description: `Please provide a phone number for member ${i + 1}.`, variant: 'destructive' });
+          setExpandedMember(i);
+          return;
+        }
+        if (!isValidPHPhone(ph)) {
+          toast({ title: 'Invalid phone', description: `Member ${i + 1}: PH mobile must be 11 digits and start with 09.`, variant: 'destructive' });
+          setExpandedMember(i);
+          return;
+        }
       }
       if (!m.med_consent) {
         toast({ title: 'Consent Missing', description: `Member ${i + 1} must check the medical consent box`, variant: 'destructive' });
@@ -269,6 +281,25 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         ...m,
         appointment_id: apt.id,
       })));
+
+      // Save non-self companions for future auto-fill (best-effort, fire-and-forget)
+      members.filter(m => m.relationship !== 'Self' && m.member_name).forEach(m => {
+        companionsAPI.upsert({
+          owner_id: user.id,
+          member_name: m.member_name,
+          date_of_birth: m.date_of_birth || null,
+          gender: m.gender || null,
+          phone: m.phone || null,
+          relationship: m.relationship || null,
+          med_q1: m.med_q1, med_q2: m.med_q2, med_q2_details: m.med_q2_details,
+          med_q3: m.med_q3, med_q3_details: m.med_q3_details,
+          med_q4: m.med_q4, med_q4_details: m.med_q4_details,
+          med_q5: m.med_q5, med_q5_details: m.med_q5_details,
+          med_q6: m.med_q6,
+          med_last_checkup: m.med_last_checkup, med_other: m.med_other,
+          med_consent: m.med_consent,
+        }).catch(() => {});
+      });
 
       toast({ title: 'Booked!', description: `${members.length} member(s) booked. Pending approval.` });
 
@@ -415,8 +446,22 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                         </Select>
                       </div>
                       <div className="col-span-2">
-                        <Label className="text-xs">Phone {isSelf ? '(from your profile)' : '*'}</Label>
-                        <Input value={member.phone} onChange={e => updateMember(i, { phone: e.target.value })} disabled={isSelf} className="h-9" placeholder="Phone number" inputMode="tel" />
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Phone {isSelf ? '(from your profile)' : '*'}</Label>
+                          {!isSelf && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[11px] text-secondary hover:text-secondary"
+                              onClick={() => setCompanionPickerFor(i)}
+                            >
+                              <BookmarkCheck className="w-3 h-3 mr-1" />
+                              Pick saved
+                            </Button>
+                          )}
+                        </div>
+                        <PhoneInput value={member.phone || ''} onChange={v => updateMember(i, { phone: v })} disabled={isSelf} className="mt-1" showIcon={false} />
                       </div>
                     </div>
 
@@ -517,30 +562,37 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
               if (day === null) return <div key={`e-${idx}`} />;
               const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const isPast = dateStr < todayStr;
+              const eff = getEffectiveDay(dateStr, schedule, overrides);
               const dow = new Date(year, month, day).getDay();
-              const sDay = getScheduleForDay(dow);
+              const sDay = eff.day;
               const isClosed = sDay ? !sDay.is_open : dow === 0;
               const isSelected = dateStr === selectedDate;
               const isToday = dateStr === todayStr;
               const disabled = isPast || isClosed;
+              const isOverride = !!eff.override;
               return (
-                <button key={dateStr} disabled={disabled} onClick={() => {
+                <button key={dateStr} disabled={disabled} title={isOverride ? eff.override?.reason || (isClosed ? 'Closed' : 'Special hours') : undefined} onClick={() => {
                   setSelectedDate(dateStr);
                   setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
                   setExpandedMember(0);
-                  // Scroll back up to members section after a brief delay for state update
                   setTimeout(() => {
                     membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }, 100);
                 }}
                   className={cn(
-                    'rounded-lg p-2 text-sm font-medium transition-colors',
+                    'relative rounded-lg p-2 text-sm font-medium transition-colors',
                     disabled && 'cursor-not-allowed text-muted-foreground/30',
                     !disabled && !isSelected && 'hover:bg-mint text-foreground',
                     isSelected && 'bg-secondary text-secondary-foreground',
                     isToday && !isSelected && 'ring-1 ring-secondary',
                   )}>
                   {day}
+                  {isOverride && (
+                    <span className={cn(
+                      'absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full',
+                      isClosed ? 'bg-destructive' : 'bg-amber-500',
+                    )} />
+                  )}
                 </button>
               );
             })}
@@ -566,6 +618,39 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
           if (onNavigate) onNavigate('dashboard');
         }}
       />
+
+      {user?.id && companionPickerFor !== null && (
+        <CompanionPicker
+          open
+          ownerId={user.id}
+          onClose={() => setCompanionPickerFor(null)}
+          onPick={(c: SavedCompanion) => {
+            const idx = companionPickerFor;
+            if (idx === null) return;
+            setMembers(prev => prev.map((m, i) => i === idx ? {
+              ...m,
+              member_name: c.member_name,
+              date_of_birth: c.date_of_birth || '',
+              gender: c.gender || '',
+              phone: c.phone || '',
+              relationship: c.relationship || m.relationship || '',
+              med_q1: c.med_q1 || '', med_q2: c.med_q2 || '', med_q2_details: c.med_q2_details || '',
+              med_q3: c.med_q3 || '', med_q3_details: c.med_q3_details || '',
+              med_q4: c.med_q4 || '', med_q4_details: c.med_q4_details || '',
+              med_q5: c.med_q5 || '', med_q5_details: c.med_q5_details || '',
+              med_q6: c.med_q6 || '', med_last_checkup: c.med_last_checkup || '',
+              med_other: c.med_other || '', med_consent: !!c.med_consent,
+            } : m));
+            // Sync DOB parts
+            if (c.date_of_birth) {
+              const [y, mo, d] = c.date_of_birth.split('-');
+              setMemberDobParts(prev => prev.map((p, i) => i === idx ? { year: y || '', month: mo || '', day: d || '' } : p));
+            }
+            setCompanionPickerFor(null);
+            toast({ title: 'Companion loaded', description: `${c.member_name}'s info auto-filled.` });
+          }}
+        />
+      )}
     </div>
   );
 }

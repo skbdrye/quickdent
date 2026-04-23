@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, CheckCheck, Trash2, CalendarDays, CalendarOff, CalendarClock, ShieldAlert, AlertTriangle, Info, Clock, FileText } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, CalendarDays, CalendarOff, CalendarClock, ShieldAlert, AlertTriangle, Info, Clock, FileText, Image as ImageIcon, Hourglass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -39,6 +39,8 @@ function getNotificationIcon(type: string) {
     case 'ban_notice': return <ShieldAlert className="w-4 h-4 text-red-500" />;
     case 'status_change': return <Info className="w-4 h-4 text-blue-500" />;
     case 'prescription': return <FileText className="w-4 h-4 text-secondary" />;
+    case 'xray': return <ImageIcon className="w-4 h-4 text-violet-500" />;
+    case 'standby': return <Hourglass className="w-4 h-4 text-amber-500" />;
     default: return <Bell className="w-4 h-4 text-muted-foreground" />;
   }
 }
@@ -46,9 +48,16 @@ function getNotificationIcon(type: string) {
 interface NotificationBellProps {
   onNavigateToAppointment?: (appointmentId?: number | null) => void;
   onNavigateToPrescriptions?: (appointmentId?: number | null) => void;
+  onNavigateToXrays?: (appointmentId?: number | null) => void;
+  onNavigateToStandby?: (standbyId?: number | null) => void;
 }
 
-export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescriptions }: NotificationBellProps) {
+export function NotificationBell({
+  onNavigateToAppointment,
+  onNavigateToPrescriptions,
+  onNavigateToXrays,
+  onNavigateToStandby,
+}: NotificationBellProps) {
   const { user } = useAuthStore();
   const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, clearAll } = useNotificationsStore();
   const [open, setOpen] = useState(false);
@@ -103,6 +112,20 @@ export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescrip
     // Prescription notification -> go to prescriptions tab with highlight
     if (n.type === 'prescription' && onNavigateToPrescriptions) {
       onNavigateToPrescriptions(n.related_appointment_id);
+      setOpen(false);
+      return;
+    }
+
+    // X-ray notification -> go to xrays tab
+    if (n.type === 'xray' && onNavigateToXrays) {
+      onNavigateToXrays(n.related_appointment_id);
+      setOpen(false);
+      return;
+    }
+
+    // Standby notification -> go to standby tab
+    if (n.type === 'standby' && onNavigateToStandby) {
+      onNavigateToStandby(n.related_id);
       setOpen(false);
       return;
     }
@@ -163,7 +186,7 @@ export function NotificationBell({ onNavigateToAppointment, onNavigateToPrescrip
                       className={cn(
                         'w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/50 transition-colors',
                         !n.is_read && 'bg-secondary/5',
-                        (n.related_appointment_id || n.type === 'prescription') && 'cursor-pointer'
+                        (n.related_appointment_id || n.type === 'prescription' || n.type === 'xray' || n.type === 'standby') && 'cursor-pointer'
                       )}
                       onClick={() => handleNotificationClick(n)}
                     >

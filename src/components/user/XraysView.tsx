@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/lib/store';
-import { Image, Download, Eye, CalendarDays, Clock, Users, User } from 'lucide-react';
+import { Image, Eye, CalendarDays, Clock, Users, User } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
+import { ImageGallery } from '@/components/shared/ImageGallery';
 
 interface XrayRecord {
   id: number;
   image_url: string;
+  images?: string[] | null;
   notes: string;
   uploaded_by: string;
   xray_date: string;
@@ -32,12 +34,24 @@ interface AppointmentXrayGroup {
   xrays: GroupMemberXray[];
 }
 
-export default function XraysView() {
+interface XraysViewProps {
+  highlightAppointmentId?: number | null;
+  highlightKey?: number;
+}
+
+function combinedImages(x: XrayRecord): string[] {
+  const list: string[] = [];
+  if (Array.isArray(x.images)) list.push(...x.images);
+  if (x.image_url && !list.includes(x.image_url)) list.push(x.image_url);
+  return list.filter(Boolean);
+}
+
+export default function XraysView({ highlightAppointmentId, highlightKey }: XraysViewProps) {
   const { user } = useAuthStore();
   const [groups, setGroups] = useState<AppointmentXrayGroup[]>([]);
   const [viewingXrays, setViewingXrays] = useState<GroupMemberXray[] | null>(null);
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [highlightingId, setHighlightingId] = useState<number | null>(null);
 
   const loadXrays = useCallback(async () => {
     if (!user) return;
@@ -134,22 +148,23 @@ export default function XraysView() {
     if (user) loadXrays();
   }, [user, loadXrays]);
 
-  const handleDownload = async (imageUrl: string, xrayId: number) => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `xray_${xrayId}.${blob.type.split('/')[1] || 'jpg'}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      window.open(imageUrl, '_blank');
+  // Highlight + scroll when triggered by notification
+  useEffect(() => {
+    if (highlightAppointmentId && highlightKey && highlightKey > 0 && !loading && groups.length > 0) {
+      setHighlightingId(highlightAppointmentId);
+      setTimeout(() => {
+        const el = document.getElementById(`xr-group-${highlightAppointmentId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Auto-open the dialog with these xrays
+          const grp = groups.find(g => g.appointment_id === highlightAppointmentId);
+          if (grp) setViewingXrays(grp.xrays);
+        }
+      }, 100);
+      const t = setTimeout(() => setHighlightingId(null), 4000);
+      return () => clearTimeout(t);
     }
-  };
+  }, [highlightAppointmentId, highlightKey, loading, groups]);
 
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
@@ -175,7 +190,11 @@ export default function XraysView() {
           {groups.map((group, idx) => (
             <Card
               key={group.appointment_id ?? `group-${idx}`}
-              className="border-border/50 overflow-hidden hover:shadow-sm transition-shadow"
+              id={group.appointment_id ? `xr-group-${group.appointment_id}` : undefined}
+              className={cn(
+                'border-border/50 overflow-hidden hover:shadow-sm transition-all duration-300',
+                highlightingId === group.appointment_id && 'ring-2 ring-secondary ring-offset-2 shadow-md',
+              )}
             >
               <CardContent className="p-0">
                 <div className="flex items-center justify-between p-4">
@@ -231,89 +250,44 @@ export default function XraysView() {
 
       {/* X-ray List Viewer Dialog */}
       <Dialog open={!!viewingXrays} onOpenChange={() => setViewingXrays(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>X-Ray Records</DialogTitle>
           </DialogHeader>
           {viewingXrays && (
             <div className="space-y-4">
-              {viewingXrays.map((xray) => (
-                <div key={xray.id} className="border border-border/50 rounded-xl overflow-hidden">
-                  <div className="p-3 flex items-center justify-between bg-muted/30 border-b border-border/30">
-                    <div>
-                      <p className="font-medium text-sm text-foreground">{xray.uploaded_by}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(xray.xray_date + 'T00:00:00').toLocaleDateString('en-US', {
-                          month: 'long', day: 'numeric', year: 'numeric',
-                        })}
-                      </p>
+              {viewingXrays.map((xray) => {
+                const imgs = combinedImages(xray);
+                return (
+                  <div key={xray.id} className="border border-border/50 rounded-xl overflow-hidden">
+                    <div className="p-3 flex items-center justify-between bg-muted/30 border-b border-border/30">
+                      <div>
+                        <p className="font-medium text-sm text-foreground">{xray.uploaded_by}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(xray.xray_date + 'T00:00:00').toLocaleDateString('en-US', {
+                            month: 'long', day: 'numeric', year: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                      {xray.member_name && (
+                        <Badge variant="outline" className="text-xs">
+                          For: {xray.member_name}
+                        </Badge>
+                      )}
                     </div>
-                    {xray.member_name && (
-                      <Badge variant="outline" className="text-xs">
-                        For: {xray.member_name}
-                      </Badge>
-                    )}
-                  </div>
 
-                  <div>
-                    <div
-                      className="relative cursor-pointer group bg-white"
-                      onClick={() => setViewingImage(xray.image_url)}
-                    >
-                      <img
-                        src={xray.image_url}
-                        alt="X-Ray"
-                        className="w-full max-h-72 object-contain"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2 shadow-lg">
-                          <Eye className="w-5 h-5 text-foreground" />
+                    <div className="p-3 space-y-3">
+                      <ImageGallery images={imgs} size="md" emptyLabel="No image" />
+                      {xray.notes && (
+                        <div className="px-1 py-2 text-sm text-muted-foreground border-t border-border/30">
+                          <span className="font-medium text-foreground">Notes: </span>{xray.notes}
                         </div>
-                      </div>
-                    </div>
-                    {xray.notes && (
-                      <div className="px-4 py-2 text-sm text-muted-foreground border-t border-border/30">
-                        <span className="font-medium text-foreground">Notes: </span>{xray.notes}
-                      </div>
-                    )}
-                    <div className="p-2.5 flex items-center justify-end border-t border-border/30 bg-muted/20">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 text-xs h-8"
-                        onClick={() => handleDownload(xray.image_url, xray.id)}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download
-                      </Button>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Full-Size Image Viewer */}
-      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
-        <DialogContent className="max-w-4xl p-2">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="flex items-center justify-between">
-              <span>X-Ray</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 mr-6"
-                onClick={() => viewingImage && handleDownload(viewingImage, 0)}
-              >
-                <Download className="h-3 w-3" /> Save
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          {viewingImage && (
-            <img src={viewingImage} alt="X-Ray" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
           )}
         </DialogContent>
       </Dialog>

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '@/integrations/supabase/client';
-import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, GroupMember, Notification, Xray, StandbyRequest } from './types';
+import type { User, Appointment, PatientProfile, MedicalAssessment, Prescription, ClinicService, ClinicSchedule, ClinicScheduleDay, GroupMember, Notification, Xray, StandbyRequest, SavedCompanion, ScheduleOverride } from './types';
 import { formatPhoneWithCountry, normalizePhoneForLogin } from './countries';
 import { formatTime } from './utils';
 import bcryptjs from 'bcryptjs';
@@ -858,7 +858,7 @@ export const notificationsAPI = {
     }
   },
 
-  async create(notification: Omit<Notification, 'id' | 'created_at' | 'is_read'> & { related_appointment_id?: number | null }) {
+  async create(notification: Omit<Notification, 'id' | 'created_at' | 'is_read'> & { related_appointment_id?: number | null; related_id?: number | null }) {
     try {
       const { error } = await (supabase as any)
         .from('notifications')
@@ -869,7 +869,7 @@ export const notificationsAPI = {
     }
   },
 
-  async notifyAdmins(title: string, message: string, type: Notification['type'] = 'new_booking', relatedAppointmentId?: number | null) {
+  async notifyAdmins(title: string, message: string, type: Notification['type'] = 'new_booking', relatedAppointmentId?: number | null, relatedId?: number | null) {
     try {
       const { data: admins } = await supabase
         .from('users')
@@ -883,6 +883,7 @@ export const notificationsAPI = {
             message,
             type,
             ...(relatedAppointmentId && { related_appointment_id: relatedAppointmentId }),
+            ...(relatedId && { related_id: relatedId }),
           });
         }
       }
@@ -1089,3 +1090,155 @@ export const remindersAPI = {
     }
   },
 };
+
+// ========== SAVED COMPANIONS API ==========
+export const companionsAPI = {
+  async list(ownerId: string): Promise<SavedCompanion[]> {
+    const { data, error } = await (supabase as any)
+      .from('saved_companions')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .order('updated_at', { ascending: false });
+    if (error) {
+      console.warn('Failed to fetch companions:', error);
+      return [];
+    }
+    return (data || []) as SavedCompanion[];
+  },
+
+  async upsert(payload: Omit<SavedCompanion, 'id' | 'created_at' | 'updated_at'>): Promise<SavedCompanion | null> {
+    try {
+      // Dedupe by owner + name + dob
+      const { data: existing } = await (supabase as any)
+        .from('saved_companions')
+        .select('id')
+        .eq('owner_id', payload.owner_id)
+        .ilike('member_name', payload.member_name)
+        .eq('date_of_birth', payload.date_of_birth || null)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await (supabase as any)
+          .from('saved_companions')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        if (error) throw error;
+        return data as SavedCompanion;
+      }
+      const { data, error } = await (supabase as any)
+        .from('saved_companions')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+      return data as SavedCompanion;
+    } catch (err) {
+      console.warn('Failed to upsert companion:', err);
+      return null;
+    }
+  },
+
+  async update(id: number, updates: Partial<SavedCompanion>) {
+    const { error } = await (supabase as any)
+      .from('saved_companions')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+  },
+
+  async delete(id: number) {
+    const { error } = await (supabase as any)
+      .from('saved_companions')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  },
+};
+
+// ========== SCHEDULE OVERRIDES API ==========
+export const scheduleOverridesAPI = {
+  async list(): Promise<ScheduleOverride[]> {
+    const { data, error } = await (supabase as any)
+      .from('schedule_overrides')
+      .select('*')
+      .order('override_date', { ascending: true });
+    if (error) {
+      console.warn('Failed to fetch overrides:', error);
+      return [];
+    }
+    return (data || []) as ScheduleOverride[];
+  },
+
+  async upsert(payload: ScheduleOverride) {
+    const { data: existing } = await (supabase as any)
+      .from('schedule_overrides')
+      .select('override_date')
+      .eq('override_date', payload.override_date)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await (supabase as any)
+        .from('schedule_overrides')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('override_date', payload.override_date);
+      if (error) throw error;
+    } else {
+      const { error } = await (supabase as any)
+        .from('schedule_overrides')
+        .insert([payload]);
+      if (error) throw error;
+    }
+  },
+
+  async delete(date: string) {
+    const { error } = await (supabase as any)
+      .from('schedule_overrides')
+      .delete()
+      .eq('override_date', date);
+    if (error) throw error;
+  },
+};
+
+// ========== Schedule helpers (override-aware) ==========
+export function getEffectiveDay(
+  date: string,
+  weekly: ClinicSchedule | null,
+  overrides: ScheduleOverride[] | null,
+): { day: ClinicScheduleDay | null; override: ScheduleOverride | null } {
+  const ovr = (overrides || []).find(o => o.override_date === date) || null;
+  if (ovr) {
+    if (!ovr.is_open) return { day: { is_open: false, open_time: '', close_time: '', break_start: '', break_end: '' }, override: ovr };
+    return {
+      day: {
+        is_open: true,
+        open_time: ovr.open_time || '09:00',
+        close_time: ovr.close_time || '17:00',
+        break_start: ovr.break_start || '12:00',
+        break_end: ovr.break_end || '13:00',
+      },
+      override: ovr,
+    };
+  }
+  const dow = new Date(date + 'T12:00:00').getDay();
+  return { day: weekly?.[String(dow)] || null, override: null };
+}
+
+export function generateDaySlots(day: ClinicScheduleDay | null, stepMin = 30): string[] {
+  if (!day || !day.is_open) return [];
+  const [oH, oM] = (day.open_time || '09:00').split(':').map(Number);
+  const [cH, cM] = (day.close_time || '17:00').split(':').map(Number);
+  const [bsH, bsM] = (day.break_start || '12:00').split(':').map(Number);
+  const [beH, beM] = (day.break_end || '13:00').split(':').map(Number);
+  const open = oH * 60 + oM;
+  const close = cH * 60 + cM;
+  const bs = bsH * 60 + bsM;
+  const be = beH * 60 + beM;
+  const out: string[] = [];
+  for (let t = open; t < close; t += stepMin) {
+    if (t >= bs && t < be) continue;
+    out.push(`${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`);
+  }
+  return out;
+}

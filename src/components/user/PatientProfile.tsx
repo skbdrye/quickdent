@@ -118,6 +118,17 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
       toast({ title: 'Missing Information', description: `Please fill in: ${missingFields.join(', ')}`, variant: 'destructive' });
       return;
     }
+
+    // Detect if anything actually changed compared to currently-saved profile.
+    // If nothing changed, silently advance to medical step without DB hit and toast.
+    const current = (profile || {}) as Record<string, unknown>;
+    const fields: Array<keyof typeof localProfile> = ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'address', 'phone'];
+    const hasChanges = fields.some(f => (localProfile[f] || '') !== (current[f as string] || ''));
+    if (!hasChanges) {
+      setStep('medical');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await updateProfile(user.id, localProfile);

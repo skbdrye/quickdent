@@ -37,14 +37,9 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
     setTimeLeft(300); // 5 minutes in seconds
     setCanResend(false);
 
-    // Since Semaphore API is not yet purchased, we display the OTP visibly
-    // In production, this would send via SMS
-    toast({
-      title: 'OTP Sent',
-      description: `Your verification code is: ${code}`,
-      duration: 15000,
-    });
-  }, [toast]);
+    // Since Semaphore API is not yet purchased, the OTP is shown inside
+    // the verification dialog itself. No toast notification.
+  }, []);
 
   useEffect(() => {
     if (open) {
