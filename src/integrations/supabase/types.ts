@@ -510,6 +510,64 @@ export type Database = {
         }
         Relationships: []
       }
+      xrays: {
+        Row: {
+          appointment_id: number | null
+          created_at: string | null
+          group_member_id: number | null
+          id: number
+          image_url: string | null
+          notes: string | null
+          uploaded_by: string
+          user_id: string
+          xray_date: string
+        }
+        Insert: {
+          appointment_id?: number | null
+          created_at?: string | null
+          group_member_id?: number | null
+          id?: never
+          image_url?: string | null
+          notes?: string | null
+          uploaded_by: string
+          user_id: string
+          xray_date?: string
+        }
+        Update: {
+          appointment_id?: number | null
+          created_at?: string | null
+          group_member_id?: number | null
+          id?: never
+          image_url?: string | null
+          notes?: string | null
+          uploaded_by?: string
+          user_id?: string
+          xray_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "xrays_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xrays_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "xrays_group_member_id_fkey"
+            columns: ["group_member_id"]
+            isOneToOne: false
+            referencedRelation: "group_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
