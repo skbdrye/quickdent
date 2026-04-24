@@ -1412,7 +1412,11 @@ export function getEffectiveDay(
     };
   }
   const dow = new Date(date + 'T12:00:00').getDay();
-  return { day: weekly?.[String(dow)] || null, override: null };
+  // Weekly schedule uses keys like 'sunday', 'monday', ... while getDay()
+  // returns 0-6. Map numeric weekday to named keys for correct lookup.
+  const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const key = DAY_KEYS[dow] || String(dow);
+  return { day: weekly?.[key] || null, override: null };
 }
 
 export function generateDaySlots(day: ClinicScheduleDay | null, stepMin = 30): string[] {
