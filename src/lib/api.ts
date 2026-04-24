@@ -280,6 +280,122 @@ export const assessmentAPI = {
   },
 };
 
+// Custom error types for booking flow
+export class SlotTakenError extends Error {
+  constructor(message = 'That time has just been taken — please pick another.') {
+    super(message);
+    this.name = 'SlotTakenError';
+  }
+}
+
+export class BookingCooldownError extends Error {
+  remainingMs: number;
+  method: BookingMethod;
+  constructor(remainingMs: number, method: BookingMethod = 'self') {
+    const minutes = Math.max(1, Math.ceil(remainingMs / 60000));
+    const label = METHOD_LABEL[method];
+    super(`Please wait ${minutes} more minute${minutes !== 1 ? 's' : ''} before another ${label} booking.`);
+    this.name = 'BookingCooldownError';
+    this.remainingMs = remainingMs;
+    this.method = method;
+  }
+}
+
+export class TooManyActiveBookingsError extends Error {
+  method: BookingMethod;
+  constructor(method: BookingMethod = 'self') {
+    const limit = METHOD_LIMITS[method].maxActive;
+    const label = METHOD_LABEL[method];
+    super(`You already have ${limit} active ${label} booking${limit !== 1 ? 's' : ''}. Please complete or cancel one before booking again.`);
+    this.name = 'TooManyActiveBookingsError';
+    this.method = method;
+  }
+}
+
+// Booking method scopes — each has its own cooldown + active limit so users
+// can independently use the queue, group bookings, etc.
+export type BookingMethod = 'self' | 'group' | 'standby_self' | 'standby_other';
+
+const METHOD_LABEL: Record<BookingMethod, string> = {
+  self: 'self appointment',
+  group: 'group / book-for-others',
+  standby_self: 'standby (self)',
+  standby_other: 'standby (for someone else)',
+};
+
+const METHOD_LIMITS: Record<BookingMethod, { cooldownMs: number; maxActive: number }> = {
+  self:          { cooldownMs: 30 * 60 * 1000, maxActive: 1 },  // 30 min cooldown · 1 active
+  group:         { cooldownMs:  5 * 60 * 1000, maxActive: 5 },  //  5 min cooldown · 5 active
+  standby_self:  { cooldownMs: 30 * 60 * 1000, maxActive: 1 },  // 30 min cooldown · 1 active
+  standby_other: { cooldownMs: 10 * 60 * 1000, maxActive: 1 },  // 10 min cooldown · 1 active
+};
+
+export function getBookingLimits(method: BookingMethod) {
+  return METHOD_LIMITS[method];
+}
+
+export async function checkBookingCooldown(
+  userId: string,
+  method: BookingMethod = 'self',
+): Promise<{ ok: true } | { ok: false; reason: 'cooldown'; remainingMs: number; method: BookingMethod } | { ok: false; reason: 'too_many'; method: BookingMethod }> {
+  const { cooldownMs, maxActive } = METHOD_LIMITS[method];
+
+  // Active count + last-created timestamp scoped to this method
+  if (method === 'self' || method === 'group') {
+    const isGroup = method === 'group';
+    const { count: activeCount } = await supabase
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_group_booking', isGroup)
+      .in('status', ['Pending', 'Confirmed']);
+    if ((activeCount || 0) >= maxActive) {
+      return { ok: false, reason: 'too_many', method };
+    }
+    const { data: last } = await supabase
+      .from('appointments')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('is_group_booking', isGroup)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (last?.created_at) {
+      const elapsed = Date.now() - new Date(last.created_at).getTime();
+      if (elapsed < cooldownMs) return { ok: false, reason: 'cooldown', remainingMs: cooldownMs - elapsed, method };
+    }
+    return { ok: true };
+  }
+
+  // Standby — distinguish self vs other via reason prefix `[For ...]`
+  const wantOther = method === 'standby_other';
+  const { data: rows } = await (supabase as any)
+    .from('standby_requests')
+    .select('id, reason, created_at, status')
+    .eq('user_id', userId);
+  const list = ((rows || []) as Array<{ id: number; reason: string | null; created_at: string | null; status: string | null }>);
+  const filtered = list.filter(r => {
+    const isForOther = !!(r.reason || '').trim().startsWith('[For ');
+    return wantOther ? isForOther : !isForOther;
+  });
+  const active = filtered.filter(r => r.status === 'Waiting' || r.status === 'Confirmed').length;
+  if (active >= maxActive) return { ok: false, reason: 'too_many', method };
+  const lastCreated = filtered
+    .map(r => (r.created_at ? new Date(r.created_at).getTime() : 0))
+    .reduce((a, b) => Math.max(a, b), 0);
+  if (lastCreated) {
+    const elapsed = Date.now() - lastCreated;
+    if (elapsed < cooldownMs) return { ok: false, reason: 'cooldown', remainingMs: cooldownMs - elapsed, method };
+  }
+  return { ok: true };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  return e.code === '23505' || /SLOT_TAKEN/i.test(e.message || '') || /duplicate key/i.test(e.message || '');
+}
+
 // ========== APPOINTMENTS API ==========
 export const appointmentsAPI = {
   async fetchAll(): Promise<Appointment[]> {
@@ -329,7 +445,21 @@ export const appointmentsAPI = {
     }));
   },
 
-  async create(appointment: Omit<Appointment, 'id' | 'created_at' | 'cancelled_at' | 'group_members'>): Promise<Appointment> {
+  async create(appointment: Omit<Appointment, 'id' | 'created_at' | 'cancelled_at' | 'group_members'>, opts?: { skipCooldown?: boolean; method?: BookingMethod }): Promise<Appointment> {
+    const method: BookingMethod = opts?.method ?? (appointment.is_group_booking ? 'group' : 'self');
+    if (!opts?.skipCooldown && appointment.user_id) {
+      const guard = await checkBookingCooldown(appointment.user_id, method);
+      if (!guard.ok) {
+        const failedGuard = guard as Exclude<typeof guard, { ok: true }>;
+        if (failedGuard.reason === 'cooldown') throw new BookingCooldownError(failedGuard.remainingMs, method);
+        if (failedGuard.reason === 'too_many') throw new TooManyActiveBookingsError(method);
+      }
+    }
+    // Final pre-insert check on the slot to give a fast UX, even though DB index is the source of truth.
+    const taken = await appointmentsAPI.fetchBookedSlots(appointment.appointment_date);
+    if (taken.includes(appointment.appointment_time) && !appointment.is_group_booking) {
+      throw new SlotTakenError();
+    }
     const { data, error } = await supabase
       .from('appointments')
       .insert([{
@@ -345,7 +475,10 @@ export const appointmentsAPI = {
       }])
       .select()
       .single();
-    if (error) throw error;
+    if (error) {
+      if (isUniqueViolation(error)) throw new SlotTakenError();
+      throw error;
+    }
     return data as unknown as Appointment;
   },
 
@@ -426,7 +559,10 @@ export const appointmentsAPI = {
         rescheduled_at: new Date().toISOString(),
       } as any)
       .eq('id', id);
-    if (error) throw error;
+    if (error) {
+      if (isUniqueViolation(error)) throw new SlotTakenError();
+      throw error;
+    }
   },
 
   async delete(id: number) {
@@ -443,6 +579,51 @@ export const appointmentsAPI = {
       .eq('appointment_date', date)
       .in('status', ['Pending', 'Confirmed']);
     return (data || []).map(a => a.appointment_time);
+  },
+
+  async fetchBookedSlotsBatch(dates: string[]): Promise<Record<string, string[]>> {
+    if (dates.length === 0) return {};
+    const { data } = await supabase
+      .from('appointments')
+      .select('appointment_date, appointment_time')
+      .in('appointment_date', dates)
+      .in('status', ['Pending', 'Confirmed']);
+    const map: Record<string, string[]> = {};
+    for (const d of dates) map[d] = [];
+    for (const row of data || []) {
+      const dateStr = row.appointment_date as string;
+      if (!map[dateStr]) map[dateStr] = [];
+      map[dateStr].push(row.appointment_time as string);
+    }
+    return map;
+  },
+};
+
+// ========== USERS API (small helpers) ==========
+export const usersAPI = {
+  async markFirstLogin(userId: string) {
+    try {
+      await (supabase as any)
+        .from('users')
+        .update({ first_login_at: new Date().toISOString() })
+        .eq('id', userId)
+        .is('first_login_at', null);
+    } catch (err) {
+      console.warn('Failed to mark first login:', err);
+    }
+  },
+
+  async getFirstLogin(userId: string): Promise<string | null> {
+    try {
+      const { data } = await (supabase as any)
+        .from('users')
+        .select('first_login_at')
+        .eq('id', userId)
+        .maybeSingle();
+      return (data?.first_login_at as string | null) ?? null;
+    } catch {
+      return null;
+    }
   },
 };
 
@@ -1008,7 +1189,16 @@ export const standbyAPI = {
     return (data || []) as unknown as StandbyRequest[];
   },
 
-  async create(request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>) {
+  async create(request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>, opts?: { skipCooldown?: boolean; method?: BookingMethod }) {
+    const method: BookingMethod = opts?.method ?? ((request.reason || '').trim().startsWith('[For ') ? 'standby_other' : 'standby_self');
+    if (!opts?.skipCooldown && request.user_id) {
+      const guard = await checkBookingCooldown(request.user_id, method);
+      if (!guard.ok) {
+        const failedGuard = guard as Exclude<typeof guard, { ok: true }>;
+        if (failedGuard.reason === 'cooldown') throw new BookingCooldownError(failedGuard.remainingMs, method);
+        if (failedGuard.reason === 'too_many') throw new TooManyActiveBookingsError(method);
+      }
+    }
     const { data, error } = await (supabase as any)
       .from('standby_requests')
       .insert([{ ...request, status: 'Waiting' }])

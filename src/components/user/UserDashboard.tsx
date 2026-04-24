@@ -1,11 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle, Image } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useAuthStore, useAppointmentsStore } from '@/lib/store';
+import { useAuthStore, useAppointmentsStore, useProfileStore } from '@/lib/store';
 import { statusVariant } from '@/lib/types';
 import { formatTime } from '@/lib/utils';
+import { usersAPI } from '@/lib/api';
 import type { DashboardPage } from '@/lib/types';
 
 interface UserDashboardProps {
@@ -16,10 +17,41 @@ interface UserDashboardProps {
 export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardProps) {
   const { user } = useAuthStore();
   const { appointments, fetchUserAppointments } = useAppointmentsStore();
+  const { profile, fetchProfile } = useProfileStore();
+  const [isFirstLogin, setIsFirstLogin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (user?.id) fetchUserAppointments(user.id);
-  }, [user?.id, fetchUserAppointments]);
+    if (user?.id) {
+      fetchUserAppointments(user.id);
+      fetchProfile(user.id);
+    }
+  }, [user?.id, fetchUserAppointments, fetchProfile]);
+
+  // Detect first login. Source of truth is users.first_login_at; localStorage is a fallback.
+  useEffect(() => {
+    if (!user?.id) return;
+    const lsKey = `qd_first_login_seen_${user.id}`;
+    let cancelled = false;
+    (async () => {
+      const ts = await usersAPI.getFirstLogin(user.id);
+      if (cancelled) return;
+      if (ts === null) {
+        const seenLocal = typeof window !== 'undefined' && window.localStorage.getItem(lsKey);
+        if (seenLocal) {
+          setIsFirstLogin(false);
+        } else {
+          setIsFirstLogin(true);
+          if (typeof window !== 'undefined') window.localStorage.setItem(lsKey, '1');
+          // Best-effort persist (no-op if column missing)
+          usersAPI.markFirstLogin(user.id);
+        }
+      } else {
+        setIsFirstLogin(false);
+        if (typeof window !== 'undefined') window.localStorage.setItem(lsKey, '1');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -35,6 +67,9 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
     return { upcoming, pending, confirmed, completed };
   }, [appointments, today]);
 
+  const greetingName = (profile?.first_name && profile.first_name.trim()) || user?.username || 'Patient';
+  const greeting = isFirstLogin ? 'Welcome' : 'Welcome back';
+
   const stats = [
     { icon: CalendarDays, label: 'Upcoming', value: upcoming.length, bg: 'bg-blue-50 dark:bg-blue-950/30', color: 'text-blue-600 dark:text-blue-400', ring: 'ring-blue-200 dark:ring-blue-800' },
     { icon: Clock, label: 'Pending', value: pending.length, bg: 'bg-amber-50 dark:bg-amber-950/30', color: 'text-amber-600 dark:text-amber-400', ring: 'ring-amber-200 dark:ring-amber-800' },
@@ -47,7 +82,7 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
       {/* Welcome header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Welcome back, {user?.username || 'Patient'}</h1>
+          <h1 className="text-2xl font-bold text-foreground">{greeting}, {greetingName}</h1>
           <p className="text-sm text-muted-foreground">{todayFormatted}</p>
         </div>
         <Button size="sm" className="gap-1.5 self-start sm:self-auto" onClick={() => onNavigate('appointments')}>

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { ImageGallery } from '@/components/shared/ImageGallery';
 
 interface PatientProfileData {
   id: number;
@@ -50,8 +51,18 @@ interface PrescriptionData {
   diagnosis: string | null;
   instructions: string | null;
   image_url: string | null;
+  images?: string[] | null;
   prescribed_by: string;
   prescription_date: string;
+}
+
+interface XrayData {
+  id: number;
+  image_url: string | null;
+  images?: string[] | null;
+  notes: string | null;
+  uploaded_by: string;
+  xray_date: string;
 }
 
 interface UserBanData {
@@ -88,6 +99,7 @@ export default function PatientList() {
   const [selectedPatient, setSelectedPatient] = useState<PatientProfileData | null>(null);
   const [medicalData, setMedicalData] = useState<MedicalData | null>(null);
   const [prescriptions, setPrescriptions] = useState<PrescriptionData[]>([]);
+  const [xrays, setXrays] = useState<XrayData[]>([]);
   const [showDetails, setShowDetails] = useState(false);
   const [banAction, setBanAction] = useState<{ userId: string; action: 'ban' | 'unban'; name: string } | null>(null);
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
@@ -140,12 +152,15 @@ export default function PatientList() {
 
   async function viewPatient(patient: PatientProfileData) {
     setSelectedPatient(patient);
-    const [medRes, rxRes] = await Promise.all([
+    const [medRes, rxRes, xrRes] = await Promise.all([
       supabase.from('medical_assessments').select('*').eq('user_id', patient.user_id).maybeSingle(),
       supabase.from('prescriptions').select('*').eq('user_id', patient.user_id).order('prescription_date', { ascending: false }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).from('xrays').select('*').eq('user_id', patient.user_id).order('xray_date', { ascending: false }),
     ]);
     setMedicalData(medRes.data);
     setPrescriptions(rxRes.data || []);
+    setXrays(xrRes.data || []);
     setShowDetails(true);
   }
 
@@ -326,26 +341,48 @@ export default function PatientList() {
                 <p className="text-sm text-muted-foreground">No prescriptions yet</p>
               ) : (
                 <div className="space-y-2">
-                  {prescriptions.map((rx) => (
-                    <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm">
-                      <div className="flex justify-between mb-1">
-                        <span className="font-medium text-foreground">{rx.prescribed_by}</span>
-                        <span className="text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
+                  {prescriptions.map((rx) => {
+                    const imgs = [rx.image_url, ...(rx.images || [])].filter(Boolean) as string[];
+                    return (
+                      <div key={rx.id} className="bg-muted/50 p-3 rounded-lg text-sm space-y-2">
+                        <div className="flex justify-between mb-1">
+                          <span className="font-medium text-foreground">{rx.prescribed_by}</span>
+                          <span className="text-muted-foreground">{new Date(rx.prescription_date + 'T00:00:00').toLocaleDateString()}</span>
+                        </div>
+                        {rx.diagnosis && <div><span className="text-muted-foreground">Diagnosis:</span> {rx.diagnosis}</div>}
+                        {rx.medications && <div><span className="text-muted-foreground">Medications:</span> {rx.medications}</div>}
+                        {rx.instructions && <div><span className="text-muted-foreground">Instructions:</span> {rx.instructions}</div>}
+                        {imgs.length > 0 && (
+                          <ImageGallery images={imgs} size="sm" />
+                        )}
                       </div>
-                      {rx.image_url ? (
-                        <a href={rx.image_url} target="_blank" rel="noopener noreferrer" className="block mt-2 rounded-lg overflow-hidden border border-border/50 hover:border-secondary/50 transition-colors">
-                          <img src={rx.image_url} alt="Prescription" className="w-full max-h-48 object-contain bg-white" />
-                          <div className="text-center py-1 text-xs text-secondary bg-muted/30">Click to view full size</div>
-                        </a>
-                      ) : (
-                        <>
-                          {rx.diagnosis && <div><span className="text-muted-foreground">Diagnosis:</span> {rx.diagnosis}</div>}
-                          <div><span className="text-muted-foreground">Medications:</span> {rx.medications}</div>
-                          {rx.instructions && <div><span className="text-muted-foreground">Instructions:</span> {rx.instructions}</div>}
-                        </>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-foreground mb-2">X-Rays</h3>
+              {xrays.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No x-rays yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {xrays.map((xr) => {
+                    const imgs = [xr.image_url, ...(xr.images || [])].filter(Boolean) as string[];
+                    return (
+                      <div key={xr.id} className="bg-muted/50 p-3 rounded-lg text-sm space-y-2">
+                        <div className="flex justify-between mb-1">
+                          <span className="font-medium text-foreground">{xr.uploaded_by}</span>
+                          <span className="text-muted-foreground">{new Date(xr.xray_date + 'T00:00:00').toLocaleDateString()}</span>
+                        </div>
+                        {xr.notes && <div><span className="text-muted-foreground">Notes:</span> {xr.notes}</div>}
+                        {imgs.length > 0 && (
+                          <ImageGallery images={imgs} size="sm" />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

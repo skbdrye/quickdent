@@ -112,7 +112,7 @@ interface AppointmentsState {
   isLoading: boolean;
   fetchAppointments: () => Promise<void>;
   fetchUserAppointments: (userId: string) => Promise<void>;
-  addAppointment: (apt: Omit<Appointment, 'id' | 'created_at' | 'cancelled_at' | 'group_members'>) => Promise<Appointment>;
+  addAppointment: (apt: Omit<Appointment, 'id' | 'created_at' | 'cancelled_at' | 'group_members'>, opts?: { skipCooldown?: boolean; method?: import('@/lib/api').BookingMethod }) => Promise<Appointment>;
   updateStatus: (id: number, status: Appointment['status']) => Promise<void>;
   deleteAppointment: (id: number) => Promise<void>;
   fetchBookedSlots: (date: string) => Promise<string[]>;
@@ -144,8 +144,8 @@ export const useAppointmentsStore = create<AppointmentsState>((set, get) => ({
     }
   },
 
-  addAppointment: async (data) => {
-    const apt = await appointmentsAPI.create(data);
+  addAppointment: async (data, opts) => {
+    const apt = await appointmentsAPI.create(data, opts);
     set({ appointments: [apt, ...get().appointments] });
     return apt;
   },
@@ -474,7 +474,7 @@ interface StandbyState {
   isLoading: boolean;
   fetchByUser: (userId: string) => Promise<void>;
   fetchAll: () => Promise<void>;
-  addRequest: (request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>) => Promise<StandbyRequest>;
+  addRequest: (request: Omit<StandbyRequest, 'id' | 'created_at' | 'assigned_time' | 'admin_notes'>, opts?: { skipCooldown?: boolean; method?: import('@/lib/api').BookingMethod }) => Promise<StandbyRequest>;
   updateStatus: (id: number, status: StandbyRequest['status'], adminNotes?: string, assignedTime?: string) => Promise<void>;
   cancelRequest: (id: number) => Promise<void>;
 }
@@ -503,8 +503,8 @@ export const useStandbyStore = create<StandbyState>((set, get) => ({
     }
   },
 
-  addRequest: async (request) => {
-    const created = await standbyAPI.create(request);
+  addRequest: async (request, opts) => {
+    const created = await standbyAPI.create(request, opts);
     set({ requests: [created, ...get().requests] });
     return created;
   },

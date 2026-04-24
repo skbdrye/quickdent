@@ -494,8 +494,28 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
 
   const filteredAppointments = appointments.filter((apt) => {
     const displayName = getDisplayName(apt);
-    const matchesSearch = displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) {
+      const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
+      return matchesStatus;
+    }
+    const localeDate = (() => {
+      try { return new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString().toLowerCase(); }
+      catch { return ''; }
+    })();
+    const longDate = (() => {
+      try { return new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).toLowerCase(); }
+      catch { return ''; }
+    })();
+    const matchesSearch =
+      displayName.toLowerCase().includes(q) ||
+      apt.patient_name.toLowerCase().includes(q) ||
+      apt.appointment_date.toLowerCase().includes(q) ||
+      localeDate.includes(q) ||
+      longDate.includes(q) ||
+      (apt.appointment_time || '').toLowerCase().includes(q) ||
+      (apt.service || '').toLowerCase().includes(q) ||
+      apt.status.toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || apt.status === statusFilter;
     return matchesSearch && matchesStatus;
   }).sort((a, b) => {
@@ -561,7 +581,7 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by patient name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input placeholder="Search by patient, date, time, or service…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />

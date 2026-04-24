@@ -5,8 +5,9 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 400
+const TOAST_AUTO_DISMISS_MS = 3500
 
 type ToasterToast = ToastProps & {
   id: string
@@ -160,6 +161,11 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  // Auto-dismiss after a short duration so notifications don't linger
+  setTimeout(() => {
+    dismiss()
+  }, TOAST_AUTO_DISMISS_MS)
 
   return {
     id: id,

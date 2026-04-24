@@ -52,9 +52,19 @@ interface Props {
 export const MedicalAssessmentForm = React.memo(function MedicalAssessmentForm({
   value, onChange, showFooter = true, hideConsent = false, className,
 }: Props) {
-  const set = React.useCallback(<K extends keyof MedicalAssessmentFields>(k: K, v: MedicalAssessmentFields[K]) => {
-    onChange({ ...value, [k]: v });
-  }, [value, onChange]);
+  // Stable setter that always reads the latest value via refs — prevents
+  // re-creating handler functions every keystroke (kills input lag).
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+  const onChangeRef = React.useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const set = React.useCallback(
+    <K extends keyof MedicalAssessmentFields>(k: K, v: MedicalAssessmentFields[K]) => {
+      onChangeRef.current({ ...valueRef.current, [k]: v });
+    },
+    [],
+  );
 
   return (
     <div className={cn('space-y-3', className)}>

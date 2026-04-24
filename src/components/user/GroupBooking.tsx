@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,14 +6,19 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
-import { groupMembersAPI, notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
+import {
+  groupMembersAPI, notificationsAPI, companionsAPI, scheduleOverridesAPI,
+  SlotTakenError, BookingCooldownError, TooManyActiveBookingsError,
+} from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { ChevronLeft, ChevronRight, Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, BookmarkCheck } from 'lucide-react';
-import { cn, formatTime } from '@/lib/utils';
-import type { GroupMember, ClinicScheduleDay, DashboardPage, ScheduleOverride, SavedCompanion } from '@/lib/types';
+import { Clock, Users, Plus, Trash2, AlertCircle, ChevronDown, ChevronUp, BookmarkCheck } from 'lucide-react';
+import { formatTime } from '@/lib/utils';
+import type { GroupMember, DashboardPage, ScheduleOverride, SavedCompanion } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
 import { CompanionPicker } from '@/components/shared/CompanionPicker';
+import { DateTimePicker, InlineSlotGrid } from '@/components/shared/DateTimePicker';
+import { MedicalAssessmentForm, type MedicalAssessmentFields } from '@/components/shared/MedicalAssessmentForm';
 
 const RELATIONSHIPS = ['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend'];
 
@@ -31,30 +36,6 @@ function getDobDays(year: string, month: string) {
   return Array.from({ length: maxDay }, (_, i) => String(i + 1).padStart(2, '0'));
 }
 
-function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
-  const slots: { label: string; value: string; available: boolean }[] = [];
-  if (!scheduleDay || !scheduleDay.is_open) return slots;
-  const [openH, openM] = scheduleDay.open_time.split(':').map(Number);
-  const [closeH, closeM] = scheduleDay.close_time.split(':').map(Number);
-  const [bsH, bsM] = (scheduleDay.break_start || '12:00').split(':').map(Number);
-  const [beH, beM] = (scheduleDay.break_end || '13:00').split(':').map(Number);
-  const openMin = openH * 60 + openM;
-  const closeMin = closeH * 60 + closeM;
-  const bsMin = bsH * 60 + bsM;
-  const beMin = beH * 60 + beM;
-  for (let t = openMin; t < closeMin; t += 30) {
-    const h = Math.floor(t / 60);
-    const m = t % 60;
-    const h24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    const eT = t + 30;
-    const eH = Math.floor(eT / 60);
-    const eM = eT % 60;
-    const fmt = (hr: number, mn: number) => { const d = new Date(); d.setHours(hr, mn); return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); };
-    slots.push({ label: `${fmt(h, m)} - ${fmt(eH, eM)}`, value: h24, available: !(t >= bsMin && t < beMin) });
-  }
-  return slots;
-}
-
 const emptyMember = (): Omit<GroupMember, 'id' | 'appointment_id'> => ({
   member_name: '', date_of_birth: '', gender: '', phone: '', relationship: '', appointment_time: '',
   is_primary: false, linked_user_id: null,
@@ -62,6 +43,19 @@ const emptyMember = (): Omit<GroupMember, 'id' | 'appointment_id'> => ({
   med_q4: '', med_q4_details: '', med_q5: '', med_q5_details: '', med_q6: '',
   med_last_checkup: '', med_other: '', med_consent: false,
 });
+
+function memberToMedical(m: Omit<GroupMember, 'id' | 'appointment_id'>): MedicalAssessmentFields {
+  return {
+    med_q1: m.med_q1 || '', med_q2: m.med_q2 || '', med_q2_details: m.med_q2_details || '',
+    med_q3: m.med_q3 || '', med_q3_details: m.med_q3_details || '',
+    med_q4: m.med_q4 || '', med_q4_details: m.med_q4_details || '',
+    med_q5: m.med_q5 || '', med_q5_details: m.med_q5_details || '',
+    med_q6: m.med_q6 || '',
+    med_last_checkup: m.med_last_checkup || '',
+    med_other: m.med_other || '',
+    med_consent: !!m.med_consent,
+  };
+}
 
 export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage) => void }) {
   const { addAppointment } = useAppointmentsStore();
@@ -72,7 +66,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
 
   const [members, setMembers] = useState([emptyMember()]);
   const [includeSelf, setIncludeSelf] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [expandedMember, setExpandedMember] = useState<number>(0);
@@ -85,7 +78,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   // Per-member DOB parts so partial selection persists
   const [memberDobParts, setMemberDobParts] = useState<{ year: string; month: string; day: string }[]>([{ year: '', month: '', day: '' }]);
 
-  // Keep memberDobParts in sync with members array length
   useEffect(() => {
     setMemberDobParts(prev => {
       const next = members.map((m, i) => {
@@ -104,13 +96,11 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       const next = [...prev];
       const current = next[memberIndex] || { year: '', month: '', day: '' };
       const newParts = { ...current, [part]: value };
-      // Auto-fix day if it exceeds the new month's max
       if (newParts.year && newParts.month) {
         const maxDay = new Date(Number(newParts.year), Number(newParts.month), 0).getDate();
         if (Number(newParts.day) > maxDay) newParts.day = String(maxDay).padStart(2, '0');
       }
       next[memberIndex] = newParts;
-      // Update the member's date_of_birth when all 3 parts are selected
       if (newParts.year && newParts.month && newParts.day) {
         setMembers(prevMembers => prevMembers.map((m, i) =>
           i === memberIndex ? { ...m, date_of_birth: `${newParts.year}-${newParts.month}-${newParts.day}` } : m
@@ -155,7 +145,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       setMembers(prev => {
         const filtered = prev.filter(m => m.relationship !== 'Self');
         const result = [selfMember, ...filtered];
-        // Sync DOB parts for the self member
         const selfDob = selfMember.date_of_birth ? selfMember.date_of_birth.split('-') : ['', '', ''];
         setMemberDobParts(prevParts => {
           const filteredParts = prevParts.slice(prev.findIndex(m => m.relationship !== 'Self') === -1 ? prevParts.length : 0);
@@ -169,31 +158,9 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeSelf]);
 
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().split('T')[0];
-  const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  const calendarDays = useMemo(() => {
-    const days: (number | null)[] = [];
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let d = 1; d <= daysInMonth; d++) days.push(d);
-    return days;
-  }, [firstDay, daysInMonth]);
-
-  const getScheduleForDate = (date: string): ClinicScheduleDay | null => getEffectiveDay(date, schedule, overrides).day;
-
-  const timeSlots = useMemo(() => {
-    if (!selectedDate) return [];
-    return generateTimeSlots(getScheduleForDate(selectedDate));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, schedule, overrides]);
-
-  const updateMember = (index: number, data: Partial<Omit<GroupMember, 'id' | 'appointment_id'>>) => {
+  const updateMember = useCallback((index: number, data: Partial<Omit<GroupMember, 'id' | 'appointment_id'>>) => {
     setMembers(prev => prev.map((m, i) => i === index ? { ...m, ...data } : m));
-  };
+  }, []);
 
   const addMember = () => {
     if (members.length >= 5) {
@@ -216,6 +183,11 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
 
   const profileReady = isProfileComplete() && isAssessmentSubmitted();
 
+  const selectedTimesSet = useMemo(
+    () => new Set(members.map(m => m.appointment_time).filter(Boolean)),
+    [members],
+  );
+
   const handleBook = async () => {
     if (!selectedDate || !user) {
       toast({ title: 'Incomplete', description: 'Please select a date', variant: 'destructive' });
@@ -225,7 +197,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       toast({ title: 'No members', description: 'Add at least one member', variant: 'destructive' });
       return;
     }
-    // If only self is in the group (no other members), suggest using Book Appointment instead
     const nonSelfMembers = members.filter(m => m.relationship !== 'Self');
     if (nonSelfMembers.length === 0 && members.length === 1 && members[0].relationship === 'Self') {
       toast({
@@ -242,7 +213,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         setExpandedMember(i);
         return;
       }
-      // Phone is required when booking for someone else (non-self members)
       if (m.relationship !== 'Self') {
         const ph = (m.phone || '').trim();
         if (!ph) {
@@ -259,6 +229,16 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       if (!m.med_consent) {
         toast({ title: 'Consent Missing', description: `Member ${i + 1} must check the medical consent box`, variant: 'destructive' });
         setExpandedMember(i);
+        return;
+      }
+    }
+
+    // Quick double-check: refresh booked slots and ensure no member's chosen time was just taken
+    const fresh = new Set(await useAppointmentsStore.getState().fetchBookedSlots(selectedDate));
+    for (const m of members) {
+      if (fresh.has(m.appointment_time)) {
+        toast({ title: 'Slot just taken', description: `${formatTime(m.appointment_time)} is no longer available — please pick another time for ${m.member_name}.`, variant: 'destructive' });
+        setBookedSlots(fresh);
         return;
       }
     }
@@ -282,7 +262,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         appointment_id: apt.id,
       })));
 
-      // Save non-self companions for future auto-fill (best-effort, fire-and-forget)
       members.filter(m => m.relationship !== 'Self' && m.member_name).forEach(m => {
         companionsAPI.upsert({
           owner_id: user.id,
@@ -303,7 +282,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
 
       toast({ title: 'Booked!', description: `${members.length} member(s) booked. Pending approval.` });
 
-      // Notify admins about new booking
       await notificationsAPI.notifyAdmins(
         'New Companion Booking',
         `${user.username} booked for ${members.length} member(s): ${members.map(m => m.member_name).join(', ')} on ${selectedDate}.`,
@@ -317,8 +295,17 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       setIncludeSelf(false);
       setSelectedDate(null);
       setSuccessModal({ open: true, count: bookedCount, date: bookedDate });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
+    } catch (err) {
+      if (err instanceof SlotTakenError) {
+        toast({ title: 'Slot just taken', description: err.message, variant: 'destructive' });
+        if (selectedDate) loadBookedSlots(selectedDate);
+      } else if (err instanceof BookingCooldownError) {
+        toast({ title: 'Slow down a bit', description: err.message, variant: 'destructive' });
+      } else if (err instanceof TooManyActiveBookingsError) {
+        toast({ title: 'Too many active bookings', description: err.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
+      }
     }
     setIsSubmitting(false);
   };
@@ -337,14 +324,28 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
     );
   }
 
-  const selectedTimesSet = new Set(members.map(m => m.appointment_time).filter(Boolean));
-
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Book for Others</h1>
         <p className="text-sm text-muted-foreground">Book for family members, friends, or include yourself</p>
       </div>
+
+      {/* Date selection FIRST so users see availability before adding people */}
+      <DateTimePicker
+        weekly={schedule}
+        overrides={overrides}
+        selectedDate={selectedDate}
+        selectedTime={null}
+        onDateChange={(d) => {
+          setSelectedDate(d);
+          setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
+          setExpandedMember(0);
+          setTimeout(() => membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+        }}
+        onTimeChange={() => {}}
+        hideTimeSlots
+      />
 
       {/* Include Self Toggle */}
       <Card className="border-border/50">
@@ -360,11 +361,18 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       {/* Members */}
       <Card className="border-border/50" ref={membersCardRef}>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-lg flex items-center gap-2"><Users className="w-5 h-5" /> Members ({members.length}/5)</CardTitle>
-            <Button variant="outline" size="sm" onClick={addMember} disabled={members.length >= 5} className="gap-1">
-              <Plus className="w-4 h-4" /> Add
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={addMember} disabled={members.length >= 5} className="gap-1">
+                <Plus className="w-4 h-4" /> Add
+              </Button>
+              {user?.id && (
+                <Button variant="outline" size="sm" className="gap-1" onClick={() => setCompanionPickerFor(expandedMember >= 0 ? expandedMember : 0)}>
+                  <BookmarkCheck className="w-4 h-4" /> Saved
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -373,8 +381,12 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
             const isExpanded = expandedMember === i;
             return (
               <div key={i} className="border border-border/50 rounded-lg overflow-hidden">
-                <button onClick={() => setExpandedMember(isExpanded ? -1 : i)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setExpandedMember(isExpanded ? -1 : i)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedMember(isExpanded ? -1 : i); } }}
+                  className="w-full flex items-center justify-between p-3 hover:bg-muted/30 transition-colors cursor-pointer select-none">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">
                       {member.member_name || `Member ${i + 1}`}
@@ -391,11 +403,10 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                     )}
                     {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                   </div>
-                </button>
+                </div>
 
                 {isExpanded && (
                   <div className="p-3 pt-0 space-y-3 border-t border-border/30">
-                    {/* Basic Info */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">Full Name *</Label>
@@ -446,92 +457,36 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
                         </Select>
                       </div>
                       <div className="col-span-2">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs">Phone {isSelf ? '(from your profile)' : '*'}</Label>
-                          {!isSelf && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-[11px] text-secondary hover:text-secondary"
-                              onClick={() => setCompanionPickerFor(i)}
-                            >
-                              <BookmarkCheck className="w-3 h-3 mr-1" />
-                              Pick saved
-                            </Button>
-                          )}
-                        </div>
+                        <Label className="text-xs">Phone {isSelf ? '(from your profile)' : '*'}</Label>
                         <PhoneInput value={member.phone || ''} onChange={v => updateMember(i, { phone: v })} disabled={isSelf} className="mt-1" showIcon={false} />
                       </div>
                     </div>
 
                     {/* Time Slot for this member */}
-                    {selectedDate && timeSlots.length > 0 && (
+                    {selectedDate && (
                       <div>
                         <Label className="text-xs flex items-center gap-1"><Clock className="w-3 h-3" /> Time Slot *</Label>
-                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1">
-                          {timeSlots.map(slot => {
-                            const globalBooked = bookedSlots.has(slot.value);
-                            const takenByOther = selectedTimesSet.has(slot.value) && member.appointment_time !== slot.value;
-                            // Block past time slots if selected date is today
-                            const isPastTime = selectedDate === todayStr && (() => {
-                              const [h, m] = slot.value.split(':').map(Number);
-                              const now = new Date();
-                              return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
-                            })();
-                            const unavailable = !slot.available || globalBooked || takenByOther || isPastTime;
-                            const isSelected = slot.value === member.appointment_time;
-                            return (
-                              <button key={slot.value} type="button" disabled={unavailable} onClick={() => updateMember(i, { appointment_time: slot.value })} className={cn(
-                                'rounded border p-1.5 text-[10px] font-medium transition-colors',
-                                unavailable && 'cursor-not-allowed border-border/50 text-muted-foreground/30 line-through',
-                                !unavailable && !isSelected && 'border-border text-foreground hover:border-secondary/50',
-                                isSelected && 'border-secondary bg-secondary text-secondary-foreground',
-                              )}>
-                                {slot.label}
-                              </button>
-                            );
-                          })}
+                        <div className="mt-1">
+                          <InlineSlotGrid
+                            weekly={schedule}
+                            overrides={overrides}
+                            date={selectedDate}
+                            selectedTime={member.appointment_time}
+                            takenByOthers={selectedTimesSet}
+                            bookedSlots={bookedSlots}
+                            onChange={(t) => updateMember(i, { appointment_time: t })}
+                          />
                         </div>
                       </div>
                     )}
 
-                    {/* Medical Assessment */}
+                    {/* Medical Assessment — required for non-self members */}
                     {!isSelf && (
-                      <div className="border-t border-border/30 pt-3 space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Medical History</p>
-                        {[
-                          { key: 'med_q1', text: 'In good health currently?', detailKey: '' },
-                          { key: 'med_q2', text: 'Undergoing medical treatment?', detailKey: 'med_q2_details' },
-                          { key: 'med_q3', text: 'Taking maintenance medications?', detailKey: 'med_q3_details' },
-                          { key: 'med_q4', text: 'Hospitalized for serious illness?', detailKey: 'med_q4_details' },
-                          { key: 'med_q5', text: 'Known allergies?', detailKey: 'med_q5_details' },
-                          { key: 'med_q6', text: 'Currently pregnant or nursing?', detailKey: '' },
-                        ].map(q => (
-                          <div key={q.key} className="space-y-1">
-                            <p className="text-xs text-foreground">{q.text}</p>
-                            <div className="flex gap-3">
-                              {(['yes', 'no'] as const).map(v => (
-                                <label key={v} className="flex items-center gap-1 text-xs cursor-pointer">
-                                  <input type="radio" checked={(member as Record<string, unknown>)[q.key] === v}
-                                    onChange={() => updateMember(i, { [q.key]: v } as Record<string, unknown>)} className="accent-secondary" />
-                                  {v === 'yes' ? 'Yes' : 'No'}
-                                </label>
-                              ))}
-                            </div>
-                            {q.detailKey && (member as Record<string, unknown>)[q.key] === 'yes' && (
-                              <Input className="h-8 text-xs" placeholder="Please specify"
-                                value={String((member as Record<string, unknown>)[q.detailKey] || '')}
-                                onChange={e => updateMember(i, { [q.detailKey]: e.target.value } as Record<string, unknown>)} />
-                            )}
-                          </div>
-                        ))}
-                        <div className="flex items-start gap-2 pt-2">
-                          <Checkbox checked={member.med_consent} onCheckedChange={c => updateMember(i, { med_consent: c === true })} className="mt-0.5" />
-                          <p className="text-[10px] text-muted-foreground leading-relaxed">
-                            I acknowledge the medical information provided is truthful and accurate.
-                          </p>
-                        </div>
+                      <div className="border-t border-border/30 pt-3">
+                        <MedicalAssessmentForm
+                          value={memberToMedical(member)}
+                          onChange={(next) => updateMember(i, next)}
+                        />
                       </div>
                     )}
                   </div>
@@ -539,69 +494,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
               </div>
             );
           })}
-        </CardContent>
-      </Card>
-
-      {/* Calendar */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{monthLabel}</CardTitle>
-            <div className="flex gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date(year, month - 1))}><ChevronLeft className="w-4 h-4" /></Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date(year, month + 1))}><ChevronRight className="w-4 h-4" /></Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-1">
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-              <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
-            ))}
-            {calendarDays.map((day, idx) => {
-              if (day === null) return <div key={`e-${idx}`} />;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isPast = dateStr < todayStr;
-              const eff = getEffectiveDay(dateStr, schedule, overrides);
-              const dow = new Date(year, month, day).getDay();
-              const sDay = eff.day;
-              const isClosed = sDay ? !sDay.is_open : dow === 0;
-              const isSelected = dateStr === selectedDate;
-              const isToday = dateStr === todayStr;
-              const disabled = isPast || isClosed;
-              const isOverride = !!eff.override;
-              return (
-                <button key={dateStr} disabled={disabled} title={isOverride ? eff.override?.reason || (isClosed ? 'Closed' : 'Special hours') : undefined} onClick={() => {
-                  setSelectedDate(dateStr);
-                  setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
-                  setExpandedMember(0);
-                  setTimeout(() => {
-                    membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }, 100);
-                }}
-                  className={cn(
-                    'relative rounded-lg p-2 text-sm font-medium transition-colors',
-                    disabled && 'cursor-not-allowed text-muted-foreground/30',
-                    !disabled && !isSelected && 'hover:bg-mint text-foreground',
-                    isSelected && 'bg-secondary text-secondary-foreground',
-                    isToday && !isSelected && 'ring-1 ring-secondary',
-                  )}>
-                  {day}
-                  {isOverride && (
-                    <span className={cn(
-                      'absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full',
-                      isClosed ? 'bg-destructive' : 'bg-amber-500',
-                    )} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {selectedDate && (
-            <p className="text-sm text-secondary mt-2 font-medium">
-              Selected: {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </p>
-          )}
         </CardContent>
       </Card>
 
@@ -641,7 +533,6 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
               med_q6: c.med_q6 || '', med_last_checkup: c.med_last_checkup || '',
               med_other: c.med_other || '', med_consent: !!c.med_consent,
             } : m));
-            // Sync DOB parts
             if (c.date_of_birth) {
               const [y, mo, d] = c.date_of_birth.split('-');
               setMemberDobParts(prev => prev.map((p, i) => i === idx ? { year: y || '', month: mo || '', day: d || '' } : p));

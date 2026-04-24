@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Bell, Check, CheckCheck, Trash2, CalendarDays, CalendarOff, CalendarClock, ShieldAlert, AlertTriangle, Info, Clock, FileText, Image as ImageIcon, Hourglass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -155,7 +154,7 @@ export function NotificationBell({
         </Button>
 
         {open && (
-          <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border rounded-xl shadow-lg z-50 grid grid-rows-[auto_minmax(0,1fr)_auto] max-h-[min(75vh,560px)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
               <h3 className="font-semibold text-sm text-foreground">Notifications</h3>
               <div className="flex items-center gap-1">
@@ -172,7 +171,7 @@ export function NotificationBell({
               </div>
             </div>
 
-            <ScrollArea className="max-h-[360px]">
+            <div className="overflow-y-auto smooth-scroll">
               {notifications.length === 0 ? (
                 <div className="py-10 text-center">
                   <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
@@ -206,13 +205,13 @@ export function NotificationBell({
                   ))}
                 </div>
               )}
-            </ScrollArea>
+            </div>
 
-            {unreadCount > 0 && (
+            {unreadCount > 0 ? (
               <div className="px-4 py-2 border-t border-border bg-muted/20 text-center">
                 <Badge variant="secondary" className="text-[10px]">{unreadCount} unread</Badge>
               </div>
-            )}
+            ) : <div />}
           </div>
         )}
       </div>

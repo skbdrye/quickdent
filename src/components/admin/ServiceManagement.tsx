@@ -19,6 +19,7 @@ export default function ServiceManagement() {
   const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [newService, setNewService] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     loadServices();
@@ -32,17 +33,24 @@ export default function ServiceManagement() {
     setServices(data || []);
   }
 
-  async function addService() {
-    if (!newService.trim()) return;
-    const maxOrder = services.length > 0 ? Math.max(...services.map((s) => s.sort_order)) + 1 : 1;
-    const { error } = await supabase.from('services').insert({ name: newService.trim(), sort_order: maxOrder });
-    if (error) {
-      toast({ title: 'Error', description: 'Failed to add service', variant: 'destructive' });
-      return;
+  async function addService(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!newService.trim() || isAdding) return;
+    setIsAdding(true);
+    try {
+      const maxOrder = services.length > 0 ? Math.max(...services.map((s) => s.sort_order)) + 1 : 1;
+      const { error } = await supabase.from('services').insert({ name: newService.trim(), sort_order: maxOrder });
+      if (error) {
+        console.error('Add service failed:', error);
+        toast({ title: 'Error', description: error.message || 'Failed to add service', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Added', description: `${newService.trim()} has been added` });
+      setNewService('');
+      await loadServices();
+    } finally {
+      setIsAdding(false);
     }
-    toast({ title: 'Added', description: `${newService.trim()} has been added` });
-    setNewService('');
-    loadServices();
   }
 
   async function toggleService(id: number, isActive: boolean) {
@@ -63,19 +71,19 @@ export default function ServiceManagement() {
         <p className="text-muted-foreground">Manage the dental services your clinic offers</p>
       </div>
 
-      <div className="flex gap-2">
+      <form onSubmit={addService} className="flex flex-wrap gap-2 items-stretch">
         <Input
           placeholder="Enter service name..."
           value={newService}
           onChange={(e) => setNewService(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addService()}
-          className="max-w-sm"
+          className="flex-1 min-w-[200px]"
+          disabled={isAdding}
         />
-        <Button onClick={addService}>
+        <Button type="submit" disabled={isAdding || !newService.trim()} className="shrink-0">
           <Plus className="h-4 w-4 mr-1" />
-          Add
+          {isAdding ? 'Adding...' : 'Add'}
         </Button>
-      </div>
+      </form>
 
       <Card>
         <CardContent className="p-0">

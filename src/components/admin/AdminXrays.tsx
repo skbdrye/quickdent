@@ -2,17 +2,13 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Image, Search, Eye, Download, Trash2 } from 'lucide-react';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { Image, Pencil, Search } from 'lucide-react';
+import { RecordImageGallery } from '@/components/shared/RecordImageGallery';
+import { RecordImageEditor } from '@/components/shared/RecordImageEditor';
 
 interface XrayRow {
   id: number;
@@ -39,8 +35,7 @@ export default function AdminXrays({ highlightAppointmentId, highlightKey }: Adm
   const { toast } = useToast();
   const [xrays, setXrays] = useState<XrayRow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<XrayRow | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -98,16 +93,14 @@ export default function AdminXrays({ highlightAppointmentId, highlightKey }: Adm
     setLoading(false);
   }
 
-  const handleDelete = async () => {
-    if (!deletingId) return;
-    try {
-      await (supabase as any).from('xrays').delete().eq('id', deletingId);
-      setXrays(prev => prev.filter(x => x.id !== deletingId));
-      toast({ title: 'Deleted', description: 'X-ray record has been deleted.' });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to delete x-ray.', variant: 'destructive' });
-    }
-    setDeletingId(null);
+  const handleSavedFromEditor = (next: { image_url: string | null; images: string[] }) => {
+    if (!editing) return;
+    setXrays(prev => prev.map(x => x.id === editing.id ? { ...x, image_url: next.image_url || '', images: next.images } : x));
+  };
+
+  const handleDeletedFromEditor = () => {
+    if (!editing) return;
+    setXrays(prev => prev.filter(x => x.id !== editing.id));
   };
 
   const filtered = xrays.filter(xr => {
@@ -183,11 +176,10 @@ export default function AdminXrays({ highlightAppointmentId, highlightKey }: Adm
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setViewingImage(xr.image_url)}>
-                            <Eye className="h-3.5 w-3.5" /> View
-                          </Button>
-                          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingId(xr.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
+                          <RecordImageGallery primary={xr.image_url} images={xr.images} title="X-Ray Images" />
+                          <Button variant="outline" size="sm" className="gap-1 h-8" onClick={() => setEditing(xr)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Edit</span>
                           </Button>
                         </div>
                       </TableCell>
@@ -200,61 +192,20 @@ export default function AdminXrays({ highlightAppointmentId, highlightKey }: Adm
         </Card>
       )}
 
-      {/* Full Image Viewer */}
-      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
-        <DialogContent className="max-w-4xl p-2">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="flex items-center justify-between">
-              <span>X-Ray Image</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 mr-6"
-                onClick={async () => {
-                  if (!viewingImage) return;
-                  try {
-                    const response = await fetch(viewingImage);
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `xray.${blob.type.split('/')[1] || 'jpg'}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                  } catch {
-                    window.open(viewingImage, '_blank');
-                  }
-                }}
-              >
-                <Download className="h-3 w-3" /> Save
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          {viewingImage && (
-            <img src={viewingImage} alt="X-Ray" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog open={!!deletingId} onOpenChange={(open) => !open && setDeletingId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete X-Ray Record?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this x-ray record. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Edit / delete dialog */}
+      {editing && (
+        <RecordImageEditor
+          open={!!editing}
+          onOpenChange={(o) => !o && setEditing(null)}
+          kind="xray"
+          recordId={editing.id}
+          primary={editing.image_url}
+          images={editing.images}
+          patientLabel={editing.member_name ? `${editing.patient_name} · ${editing.member_name}` : editing.patient_name}
+          onSaved={handleSavedFromEditor}
+          onDeleted={handleDeletedFromEditor}
+        />
+      )}
     </div>
   );
 }

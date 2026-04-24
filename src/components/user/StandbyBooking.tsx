@@ -8,14 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthStore, useStandbyStore, useProfileStore, useAppointmentsStore, useClinicStore } from '@/lib/store';
-import { notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
+import { notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay, BookingCooldownError, TooManyActiveBookingsError } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
 import { CompanionPicker } from '@/components/shared/CompanionPicker';
 import { MedicalAssessmentForm, emptyMedical, type MedicalAssessmentFields } from '@/components/shared/MedicalAssessmentForm';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { BookmarkCheck, ChevronDown } from 'lucide-react';
+import { BookmarkCheck } from 'lucide-react';
 import {
   Clock, CalendarDays, AlertTriangle, Loader2, X, CheckCircle2, Timer, Ban,
   ChevronLeft, ChevronRight, Info, User as UserIcon, Users,
@@ -88,7 +87,6 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
   const [otherMedical, setOtherMedical] = useState<MedicalAssessmentFields>({ ...emptyMedical });
   const [companionPickerOpen, setCompanionPickerOpen] = useState(false);
   const [selectedCompanionId, setSelectedCompanionId] = useState<number | null>(null);
-  const [showMedical, setShowMedical] = useState(false);
 
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -188,7 +186,6 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
     setOtherGender('');
     setOtherMedical({ ...emptyMedical });
     setSelectedCompanionId(null);
-    setShowMedical(false);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -229,6 +226,10 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
       }
       if (!otherGender) {
         toast({ title: 'Gender required', description: 'Please select the patient\u2019s gender.', variant: 'destructive' });
+        return;
+      }
+      if (!otherMedical.med_consent) {
+        toast({ title: 'Consent required', description: 'Please review and confirm the medical consent before submitting.', variant: 'destructive' });
         return;
       }
     }
@@ -272,7 +273,7 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
           med_consent: otherMedical.med_consent,
           saved_companion_id: selectedCompanionId,
         }),
-      });
+      }, { method: mode === 'other' ? 'standby_other' : 'standby_self' });
 
       // Save companion profile (best-effort) for future quick-fills
       if (mode === 'other') {
@@ -309,11 +310,17 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
       resetForm();
     } catch (err) {
       console.error('[Standby] insert failed:', err);
-      toast({
-        title: 'Could not submit request',
-        description: 'Please try again. If this keeps happening, the clinic team has been notified.',
-        variant: 'destructive',
-      });
+      if (err instanceof BookingCooldownError) {
+        toast({ title: 'Slow down a bit', description: err.message, variant: 'destructive' });
+      } else if (err instanceof TooManyActiveBookingsError) {
+        toast({ title: 'Too many active standby requests', description: err.message, variant: 'destructive' });
+      } else {
+        toast({
+          title: 'Could not submit request',
+          description: 'Please try again. If this keeps happening, the clinic team has been notified.',
+          variant: 'destructive',
+        });
+      }
     }
     setSubmitting(false);
   };
@@ -420,7 +427,7 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patient Details</p>
                   {user?.id && (
                     <Button
@@ -491,17 +498,10 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
                   </div>
                 </div>
 
-                <Collapsible open={showMedical} onOpenChange={setShowMedical}>
-                  <CollapsibleTrigger asChild>
-                    <Button type="button" variant="outline" size="sm" className="w-full justify-between gap-2 text-xs">
-                      <span>{showMedical ? 'Hide' : 'Add'} medical history (optional but recommended)</span>
-                      <ChevronDown className={cn('w-4 h-4 transition-transform', showMedical && 'rotate-180')} />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-3">
-                    <MedicalAssessmentForm value={otherMedical} onChange={setOtherMedical} />
-                  </CollapsibleContent>
-                </Collapsible>
+                <div className="border-t border-border/30 pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Medical history *</p>
+                  <MedicalAssessmentForm value={otherMedical} onChange={setOtherMedical} />
+                </div>
               </div>
             )}
 
@@ -694,7 +694,6 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
               med_other: c.med_other || '',
               med_consent: !!c.med_consent,
             });
-            setShowMedical(true);
             setCompanionPickerOpen(false);
             toast({ title: 'Companion loaded', description: `${c.member_name}'s info auto-filled.` });
           }}

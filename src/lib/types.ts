@@ -212,6 +212,7 @@ export interface SavedCompanion {
 }
 
 export interface ScheduleOverride {
+  id?: number;
   override_date: string;
   is_open: boolean;
   open_time?: string | null;

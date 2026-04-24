@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { FileText, Search, Eye, Download } from 'lucide-react';
+import { FileText, Pencil, Search } from 'lucide-react';
+import { RecordImageGallery } from '@/components/shared/RecordImageGallery';
+import { RecordImageEditor } from '@/components/shared/RecordImageEditor';
 
 interface PrescriptionRow {
   id: number;
@@ -36,8 +37,8 @@ export default function AdminPrescriptions({ highlightAppointmentId, highlightKe
   const { toast } = useToast();
   const [prescriptions, setPrescriptions] = useState<PrescriptionRow[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<PrescriptionRow | null>(null);
 
   useEffect(() => {
     loadPrescriptions();
@@ -171,20 +172,23 @@ export default function AdminPrescriptions({ highlightAppointmentId, highlightKe
                         )}
                       </TableCell>
                       <TableCell>
-                        {rx.image_url ? (
-                          <Badge variant="confirmed" className="text-xs">Has Image</Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-xs">Text Only</Badge>
-                        )}
+                        {(() => {
+                          const set = new Set<string>();
+                          if (rx.image_url) set.add(rx.image_url);
+                          for (const u of rx.images || []) if (u) set.add(u);
+                          const total = set.size;
+                          if (total === 0) return <Badge variant="secondary" className="text-xs">Text Only</Badge>;
+                          return <Badge variant="confirmed" className="text-xs">{total > 1 ? `${total} Images` : 'Has Image'}</Badge>;
+                        })()}
                       </TableCell>
                       <TableCell>
-                        {rx.image_url ? (
-                          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setViewingImage(rx.image_url)}>
-                            <Eye className="h-3.5 w-3.5" /> View
+                        <div className="flex items-center gap-1.5">
+                          <RecordImageGallery primary={rx.image_url} images={rx.images} title="Prescription Images" />
+                          <Button variant="outline" size="sm" className="gap-1 h-8" onClick={() => setEditing(rx)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Edit</span>
                           </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">No image</span>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -195,43 +199,23 @@ export default function AdminPrescriptions({ highlightAppointmentId, highlightKe
         </Card>
       )}
 
-      {/* Full Image Viewer - No print button */}
-      <Dialog open={!!viewingImage} onOpenChange={() => setViewingImage(null)}>
-        <DialogContent className="max-w-4xl p-2">
-          <DialogHeader className="pb-2">
-            <DialogTitle className="flex items-center justify-between">
-              <span>Prescription Image</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 mr-6"
-                onClick={async () => {
-                  if (!viewingImage) return;
-                  try {
-                    const response = await fetch(viewingImage);
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `prescription.${blob.type.split('/')[1] || 'jpg'}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                  } catch {
-                    window.open(viewingImage, '_blank');
-                  }
-                }}
-              >
-                <Download className="h-3 w-3" /> Save
-              </Button>
-            </DialogTitle>
-          </DialogHeader>
-          {viewingImage && (
-            <img src={viewingImage} alt="Prescription" className="w-full object-contain rounded-lg bg-white max-h-[70vh]" />
-          )}
-        </DialogContent>
-      </Dialog>
+      {editing && (
+        <RecordImageEditor
+          open={!!editing}
+          onOpenChange={(o) => !o && setEditing(null)}
+          kind="prescription"
+          recordId={editing.id}
+          primary={editing.image_url}
+          images={editing.images}
+          patientLabel={editing.member_name ? `${editing.patient_name} · ${editing.member_name}` : editing.patient_name}
+          onSaved={({ image_url, images }) => {
+            setPrescriptions(prev => prev.map(p => p.id === editing.id ? { ...p, image_url, images } : p));
+          }}
+          onDeleted={() => {
+            setPrescriptions(prev => prev.filter(p => p.id !== editing.id));
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -145,6 +145,33 @@
   }
 }
 
+.smooth-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Always-visible thin scrollbar for the time picker columns so users
+   know the list is scrollable. */
+.time-col {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--secondary) / 0.55) transparent;
+}
+.time-col::-webkit-scrollbar {
+  width: 8px;
+}
+.time-col::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 4px;
+}
+.time-col::-webkit-scrollbar-thumb {
+  background: hsl(var(--secondary) / 0.55);
+  border-radius: 4px;
+}
+.time-col::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--secondary) / 0.8);
+}
+
 html,
 body,
 #root {

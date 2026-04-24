@@ -1,64 +1,27 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAppointmentsStore, useAuthStore, useProfileStore, useClinicStore } from '@/lib/store';
-import { notificationsAPI, scheduleOverridesAPI, getEffectiveDay } from '@/lib/api';
+import {
+  notificationsAPI, scheduleOverridesAPI,
+  SlotTakenError, BookingCooldownError, TooManyActiveBookingsError,
+} from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { ChevronLeft, ChevronRight, Clock, AlertCircle } from 'lucide-react';
-import { cn, formatTime } from '@/lib/utils';
-import type { ClinicScheduleDay, DashboardPage, ScheduleOverride } from '@/lib/types';
+import { AlertCircle } from 'lucide-react';
+import { formatTime } from '@/lib/utils';
+import type { DashboardPage, ScheduleOverride } from '@/lib/types';
 import { SuccessModal } from '@/components/shared/SuccessModal';
-
-function generateTimeSlots(scheduleDay: ClinicScheduleDay | null) {
-  const slots: { label: string; value: string; available: boolean }[] = [];
-  if (!scheduleDay || !scheduleDay.is_open) return slots;
-
-  const [openH, openM] = scheduleDay.open_time.split(':').map(Number);
-  const [closeH, closeM] = scheduleDay.close_time.split(':').map(Number);
-  const [breakStartH, breakStartM] = (scheduleDay.break_start || '12:00').split(':').map(Number);
-  const [breakEndH, breakEndM] = (scheduleDay.break_end || '13:00').split(':').map(Number);
-
-  const openMin = openH * 60 + openM;
-  const closeMin = closeH * 60 + closeM;
-  const breakStartMin = breakStartH * 60 + breakStartM;
-  const breakEndMin = breakEndH * 60 + breakEndM;
-
-  for (let t = openMin; t < closeMin; t += 30) {
-    const h = Math.floor(t / 60);
-    const m = t % 60;
-    const h24 = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    const endT = t + 30;
-    const endH = Math.floor(endT / 60);
-    const endM = endT % 60;
-
-    const fmt = (hr: number, mn: number) => {
-      const d = new Date();
-      d.setHours(hr, mn);
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    };
-
-    const isDuringBreak = t >= breakStartMin && t < breakEndMin;
-
-    slots.push({
-      label: `${fmt(h, m)} - ${fmt(endH, endM)}`,
-      value: h24,
-      available: !isDuringBreak,
-    });
-  }
-  return slots;
-}
+import { DateTimePicker } from '@/components/shared/DateTimePicker';
 
 export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: DashboardPage) => void }) {
   const { addAppointment } = useAppointmentsStore();
   const { user } = useAuthStore();
-  const { profile, assessment, fetchProfile, fetchAssessment, isProfileComplete, isAssessmentSubmitted } = useProfileStore();
+  const { profile, fetchProfile, fetchAssessment, isProfileComplete, isAssessmentSubmitted } = useProfileStore();
   const { schedule, fetchSchedule } = useClinicStore();
   const { toast } = useToast();
 
-  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successModal, setSuccessModal] = useState<{ open: boolean; date: string; time: string }>({ open: false, date: '', time: '' });
   const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
@@ -72,36 +35,10 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
     scheduleOverridesAPI.list().then(setOverrides).catch(() => {});
   }, [user?.id, fetchProfile, fetchAssessment, fetchSchedule]);
 
-  const loadBookedSlots = useCallback(async (date: string) => {
-    const slots = await useAppointmentsStore.getState().fetchBookedSlots(date);
-    setBookedSlots(new Set(slots));
+  const handleDate = useCallback((d: string | null) => {
+    setSelectedDate(d);
+    setSelectedTime(null);
   }, []);
-
-  useEffect(() => {
-    if (selectedDate) loadBookedSlots(selectedDate);
-  }, [selectedDate, loadBookedSlots]);
-
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().split('T')[0];
-  const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  const calendarDays = useMemo(() => {
-    const days: (number | null)[] = [];
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let d = 1; d <= daysInMonth; d++) days.push(d);
-    return days;
-  }, [firstDay, daysInMonth]);
-
-  const getScheduleForDate = (date: string): ClinicScheduleDay | null => getEffectiveDay(date, schedule, overrides).day;
-
-  const timeSlots = useMemo(() => {
-    if (!selectedDate) return [];
-    return generateTimeSlots(getScheduleForDate(selectedDate));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, schedule, overrides]);
 
   const profileReady = isProfileComplete() && isAssessmentSubmitted();
 
@@ -125,7 +62,6 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       });
       toast({ title: 'Booked!', description: 'Your appointment is pending admin approval.' });
 
-      // Notify admins
       const patientName = profile?.first_name && profile?.last_name ? `${profile.first_name} ${profile.last_name}` : user.username;
       await notificationsAPI.notifyAdmins(
         'New Appointment',
@@ -138,8 +74,17 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
       setSelectedDate(null);
       setSelectedTime(null);
       setSuccessModal({ open: true, date: bookedDate, time: bookedTime });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
+    } catch (err) {
+      if (err instanceof SlotTakenError) {
+        toast({ title: 'Slot just taken', description: err.message, variant: 'destructive' });
+        setSelectedTime(null);
+      } else if (err instanceof BookingCooldownError) {
+        toast({ title: 'Slow down a bit', description: err.message, variant: 'destructive' });
+      } else if (err instanceof TooManyActiveBookingsError) {
+        toast({ title: 'Too many active bookings', description: err.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Error', description: 'Failed to book.', variant: 'destructive' });
+      }
     }
     setIsSubmitting(false);
   };
@@ -171,105 +116,14 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
         <p className="text-sm text-muted-foreground">Pick a date and time for your dental visit</p>
       </div>
 
-      {/* Calendar */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">{monthLabel}</CardTitle>
-            <div className="flex gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date(year, month - 1))}><ChevronLeft className="w-4 h-4" /></Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(new Date(year, month + 1))}><ChevronRight className="w-4 h-4" /></Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-1">
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-              <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>
-            ))}
-            {calendarDays.map((day, i) => {
-              if (day === null) return <div key={`e-${i}`} />;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isPast = dateStr < todayStr;
-              const eff = getEffectiveDay(dateStr, schedule, overrides);
-              const dayOfWeek = new Date(year, month, day).getDay();
-              const scheduleDay = eff.day;
-              const isClosed = scheduleDay ? !scheduleDay.is_open : dayOfWeek === 0;
-              const isSelected = dateStr === selectedDate;
-              const isToday = dateStr === todayStr;
-              const disabled = isPast || isClosed;
-              const isOverride = !!eff.override;
-
-              return (
-                <button key={dateStr} disabled={disabled} title={isOverride ? eff.override?.reason || (isClosed ? 'Closed' : 'Special hours') : undefined} onClick={() => setSelectedDate(dateStr)} className={cn(
-                  'relative rounded-lg p-2 text-sm font-medium transition-colors',
-                  disabled && 'cursor-not-allowed text-muted-foreground/30',
-                  !disabled && !isSelected && 'hover:bg-mint text-foreground',
-                  isSelected && 'bg-secondary text-secondary-foreground',
-                  isToday && !isSelected && 'ring-1 ring-secondary',
-                )}>
-                  {day}
-                  {isOverride && (
-                    <span className={cn(
-                      'absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full',
-                      isClosed ? 'bg-destructive' : 'bg-amber-500',
-                    )} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap gap-3 mt-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-secondary" /> Available</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-muted" /> Closed</span>
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Special hours</span>
-            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-destructive" /> Date override (closed)</span>
-          </div>
-          {selectedDate && (
-            <p className="text-sm text-secondary mt-2 font-medium">
-              Selected: {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Time Slots */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2"><Clock className="w-5 h-5" /> Time Slots</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!selectedDate ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Select a date first</p>
-          ) : timeSlots.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-6">No slots available on this day</p>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {timeSlots.map(slot => {
-                const booked = bookedSlots.has(slot.value);
-                // Block past time slots if selected date is today
-                const isPastTime = selectedDate === todayStr && (() => {
-                  const [h, m] = slot.value.split(':').map(Number);
-                  const now = new Date();
-                  return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
-                })();
-                const unavailable = !slot.available || booked || isPastTime;
-                const isSelected = slot.value === selectedTime;
-                return (
-                  <button key={slot.value} disabled={unavailable} onClick={() => setSelectedTime(slot.value)} className={cn(
-                    'rounded-lg border p-2.5 text-xs font-medium transition-colors',
-                    unavailable && 'cursor-not-allowed border-border/50 text-muted-foreground/30 line-through',
-                    !unavailable && !isSelected && 'border-border text-foreground hover:border-secondary/50',
-                    isSelected && 'border-secondary bg-secondary text-secondary-foreground',
-                  )}>
-                    {slot.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <DateTimePicker
+        weekly={schedule}
+        overrides={overrides}
+        selectedDate={selectedDate}
+        selectedTime={selectedTime}
+        onDateChange={handleDate}
+        onTimeChange={setSelectedTime}
+      />
 
       <Button onClick={handleBook} className="w-full" size="lg" disabled={!selectedDate || !selectedTime || isSubmitting}>
         {isSubmitting ? 'Booking...' : 'Book Appointment'}
