@@ -33,7 +33,7 @@ export function HeroSection() {
                 Abrigo-Marabe Dental Clinic | Online Reservation
               </span>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-primary-foreground leading-tight mb-6">
-                Where efficiency{' '}
+                Where efficiency,{' '}
                 <span className="bg-gradient-to-r from-primary-foreground/80 to-primary-foreground bg-clip-text">meets dentistry</span>
               </h1>
               <p className="text-lg text-primary-foreground/70 mb-8 max-w-lg">
