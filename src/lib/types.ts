@@ -20,6 +20,7 @@ export interface PatientProfile {
   address: string;
   phone: string;
   is_complete: boolean;
+  patient_type?: 'new' | 'existing' | null;
 }
 
 export interface MedicalAssessment {
@@ -106,6 +107,8 @@ export interface GroupMember {
   appointment_time: string;
   is_primary: boolean;
   linked_user_id?: string | null;
+  /** Services chosen for this member (kept as array to match the DB schema). */
+  services?: string[] | null;
   // Medical assessment fields
   med_q1: string;
   med_q2: string;
@@ -142,6 +145,7 @@ export interface ClinicService {
   name: string;
   is_active: boolean;
   sort_order: number;
+  available_days?: string[];
 }
 
 export interface Xray {
@@ -220,6 +224,9 @@ export interface ScheduleOverride {
   break_start?: string | null;
   break_end?: string | null;
   reason?: string | null;
+  doctors_count?: number | null;
+  max_per_slot?: number | null;
+  max_daily?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -230,6 +237,12 @@ export interface ClinicScheduleDay {
   close_time: string;
   break_start: string;
   break_end: string;
+  /** Number of doctors working that day (default 1). Drives default max_per_slot. */
+  doctors_count?: number;
+  /** Maximum simultaneous bookings per time slot. Defaults to doctors_count. */
+  max_per_slot?: number;
+  /** Maximum bookings allowed across the entire day. null/undefined = unlimited. */
+  max_daily?: number | null;
 }
 
 export type ClinicSchedule = Record<string, ClinicScheduleDay>;

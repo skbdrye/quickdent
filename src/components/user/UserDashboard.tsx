@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle, Image } from 'lucide-react';
+import { CalendarDays, Clock, ClipboardCheck, Users, ArrowRight, Activity, Info, AlertTriangle, Image, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,8 @@ import { useAuthStore, useAppointmentsStore, useProfileStore } from '@/lib/store
 import { statusVariant } from '@/lib/types';
 import { formatTime } from '@/lib/utils';
 import { usersAPI } from '@/lib/api';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 import type { DashboardPage } from '@/lib/types';
 
 interface UserDashboardProps {
@@ -80,39 +82,49 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
       {/* Welcome header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{greeting}, {greetingName}</h1>
-          <p className="text-sm text-muted-foreground">{todayFormatted}</p>
-        </div>
-        <Button size="sm" className="gap-1.5 self-start sm:self-auto" onClick={() => onNavigate('appointments')}>
-          <CalendarDays className="w-4 h-4" /> Book Appointment
-        </Button>
-      </div>
+      <PageHeader
+        icon={Sparkles}
+        eyebrow={<><span>{todayFormatted}</span></>}
+        title={`${greeting}, ${greetingName}`}
+        description="Your dental care dashboard — quick stats, upcoming visits, and one-tap actions."
+        actions={
+          <Button size="sm" className="gap-1.5" onClick={() => onNavigate('appointments')}>
+            <CalendarDays className="w-4 h-4" /> Book Appointment
+          </Button>
+        }
+      />
 
-      {/* Booking Rules Banner */}
-      <Card className="border-secondary/20 bg-secondary/5">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Info className="w-4 h-4 text-secondary" />
+      {/* Booking Rules Banner — compact, scannable, color-coded */}
+      <Card className="border-secondary/20 overflow-hidden">
+        <div className="bg-gradient-to-br from-mint/40 via-mint/15 to-transparent px-4 py-3 border-b border-border/40 flex items-center gap-2.5">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+            <Info className="w-3.5 h-3.5" />
+          </span>
+          <p className="text-sm font-semibold text-foreground">Booking Rules</p>
+        </div>
+        <CardContent className="p-4 grid sm:grid-cols-3 gap-3">
+          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-mint/30 border border-secondary/10">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-secondary shrink-0">
+              <Clock className="w-3.5 h-3.5" />
+            </span>
+            <div className="text-xs text-foreground/85">
+              Cancel or reschedule at least <strong className="text-foreground">24 hours</strong> before your appointment.
             </div>
-            <div className="space-y-1.5">
-              <p className="text-sm font-semibold text-foreground">Booking Rules</p>
-              <ul className="text-xs text-foreground/80 space-y-1">
-                <li className="flex items-start gap-1.5">
-                  <span className="text-secondary mt-0.5">&#8226;</span>
-                  <span>Cancellations must be made at least <strong className="text-foreground">1 day (24 hours)</strong> before your appointment.</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-secondary mt-0.5">&#8226;</span>
-                  <span>Rescheduling is allowed <strong className="text-foreground">1 time only</strong>, at least 1 day before the appointment.</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-amber-500 mt-0.5"><AlertTriangle className="w-3 h-3" /></span>
-                  <span><strong className="text-foreground">3 no-shows will result in an account ban.</strong> Please cancel in advance if you cannot attend.</span>
-                </li>
-              </ul>
+          </div>
+          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-blue-600 dark:text-blue-400 shrink-0">
+              <CalendarDays className="w-3.5 h-3.5" />
+            </span>
+            <div className="text-xs text-foreground/85">
+              Reschedule allowed <strong className="text-foreground">1 time only</strong> per appointment.
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-amber-600 dark:text-amber-400 shrink-0">
+              <AlertTriangle className="w-3.5 h-3.5" />
+            </span>
+            <div className="text-xs text-foreground/85">
+              <strong className="text-foreground">3 no-shows = account ban.</strong> Please cancel in advance.
             </div>
           </div>
         </CardContent>
@@ -121,14 +133,15 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
       {/* Stats grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {stats.map(({ icon: Icon, label, value, bg, color, ring }) => (
-          <Card key={label} className={`border-border/50 ring-1 ${ring} overflow-hidden`}>
-            <CardContent className="p-4 flex flex-col items-center text-center gap-2">
-              <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center`}>
+          <Card key={label} className={`relative border-border/50 ring-1 ${ring} overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}>
+            <div aria-hidden className={`absolute -right-6 -top-6 w-20 h-20 rounded-full ${bg} opacity-60 blur-xl`} />
+            <CardContent className="relative p-4 flex flex-col items-center text-center gap-2">
+              <div className={`w-11 h-11 rounded-xl ${bg} flex items-center justify-center`}>
                 <Icon className={`w-5 h-5 ${color}`} />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground leading-none">{value}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
+                <p className="text-2xl font-bold text-foreground leading-none tabular-nums">{value}</p>
+                <p className="text-[11px] text-muted-foreground mt-1 font-medium">{label}</p>
               </div>
             </CardContent>
           </Card>
@@ -183,18 +196,12 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-border/50 border-dashed">
-          <CardContent className="p-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto mb-4">
-              <CalendarDays className="w-7 h-7 text-secondary" />
-            </div>
-            <p className="font-medium text-foreground">No upcoming appointments</p>
-            <p className="text-sm text-muted-foreground mt-1 mb-4">Schedule your next dental visit to keep your smile healthy.</p>
-            <Button size="sm" className="gap-1.5" onClick={() => onNavigate('appointments')}>
-              Book Appointment <ArrowRight className="w-3 h-3" />
-            </Button>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={CalendarDays}
+          title="No upcoming appointments"
+          description="Schedule your next dental visit to keep your smile healthy."
+          action={{ label: 'Book Appointment', onClick: () => onNavigate('appointments'), icon: ArrowRight }}
+        />
       )}
 
       {/* Quick actions */}
@@ -209,15 +216,16 @@ export function UserDashboard({ onNavigate, onViewAppointment }: UserDashboardPr
           <button
             key={page}
             onClick={() => onNavigate(page)}
-            className="group flex items-center gap-3 p-4 rounded-xl bg-card border border-border/50 hover:border-secondary/30 hover:shadow-sm transition-all text-left"
+            className="group flex items-center gap-3 p-4 rounded-xl bg-card border border-border/50 hover:border-secondary/40 hover:shadow-md hover:-translate-y-0.5 transition-all text-left"
           >
-            <div className="w-9 h-9 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0 group-hover:bg-secondary/20 transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0 group-hover:bg-secondary/20 group-hover:scale-105 transition-all">
               <Icon className="w-4 h-4 text-secondary" />
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{label}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">{label}</p>
               <p className="text-[11px] text-muted-foreground">{desc}</p>
             </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-secondary group-hover:translate-x-0.5 transition-all shrink-0" />
           </button>
         ))}
       </div>

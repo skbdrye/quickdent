@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useProfileStore, useAuthStore } from '@/lib/store';
 import { matchingAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { User, FileText, ChevronRight, ChevronLeft, Save, Loader2 } from 'lucide-react';
+import { User, FileText, ChevronRight, ChevronLeft, Save, Loader2, UserCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { calculateAge } from '@/lib/types';
+import { PageHeader } from '@/components/shared/PageHeader';
 import type { DashboardPage } from '@/lib/types';
 
 interface PatientProfileProps {
@@ -33,6 +34,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     gender: '',
     phone: '',
     address: '',
+    patient_type: '' as '' | 'new' | 'existing',
   });
 
   // LOCAL STATE for assessment form - prevents API calls on every keystroke
@@ -70,6 +72,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
         gender: profile.gender || '',
         phone: profile.phone || '',
         address: profile.address || '',
+        patient_type: (profile.patient_type as 'new' | 'existing' | null) || '',
       });
     }
   }, [profile]);
@@ -100,11 +103,13 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     }
   }, [assessment]);
 
-  // Detect if assessment has changed from initial loaded state
+  // Detect if assessment has changed from initial loaded state.
+  // Use a deferred copy so heavy JSON.stringify diffs don't run on every keystroke.
+  const deferredAssessment = useDeferredValue(localAssessment);
   const hasAssessmentChanged = useMemo(() => {
     if (!initialAssessmentRef.current) return true; // First time submit - always allow
-    return JSON.stringify(localAssessment) !== initialAssessmentRef.current;
-  }, [localAssessment]);
+    return JSON.stringify(deferredAssessment) !== initialAssessmentRef.current;
+  }, [deferredAssessment]);
 
   const handleSaveInfo = async () => {
     if (!user?.id) return;
@@ -114,6 +119,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     if (!localProfile.date_of_birth) missingFields.push('Date of Birth');
     if (!localProfile.gender) missingFields.push('Gender');
     if (!localProfile.phone) missingFields.push('Mobile Number');
+    if (!localProfile.patient_type) missingFields.push('Patient Type');
     if (missingFields.length > 0) {
       toast({ title: 'Missing Information', description: `Please fill in: ${missingFields.join(', ')}`, variant: 'destructive' });
       return;
@@ -122,7 +128,7 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     // Detect if anything actually changed compared to currently-saved profile.
     // If nothing changed, silently advance to medical step without DB hit and toast.
     const current = (profile || {}) as Record<string, unknown>;
-    const fields: Array<keyof typeof localProfile> = ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'address', 'phone'];
+    const fields: Array<keyof typeof localProfile> = ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'address', 'phone', 'patient_type'];
     const hasChanges = fields.some(f => (localProfile[f] || '') !== (current[f as string] || ''));
     if (!hasChanges) {
       setStep('medical');
@@ -131,7 +137,11 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
 
     setIsSaving(true);
     try {
-      await updateProfile(user.id, localProfile);
+      const { patient_type, ...rest } = localProfile;
+      await updateProfile(user.id, {
+        ...rest,
+        patient_type: patient_type === '' ? null : patient_type,
+      });
 
       // Check for matching group members (non-registered person merge)
       if (localProfile.first_name && localProfile.last_name && localProfile.date_of_birth && localProfile.gender) {
@@ -273,26 +283,53 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
 
   return (
     <div className="space-y-6 w-full max-w-4xl overflow-hidden">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Patient Profile</h1>
-        <p className="text-sm text-muted-foreground">Manage your personal and medical information</p>
-      </div>
+      <PageHeader
+        icon={UserCircle}
+        title="Patient Profile"
+        description="Manage your personal and medical information"
+      />
 
-      <Card className="border-border/50">
-        <CardContent className="p-5 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-mint flex items-center justify-center">
-            <User className="w-7 h-7 text-secondary" />
+      {/* Profile summary card with progress */}
+      <Card className="border-border/60 overflow-hidden">
+        <div className="bg-gradient-to-br from-mint/60 via-mint/20 to-transparent p-5 flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-card flex items-center justify-center ring-1 ring-secondary/20 shadow-sm shrink-0">
+            <User className="w-8 h-8 text-secondary" />
           </div>
-          <div>
-            <p className="font-semibold text-foreground">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground truncate">
               {localProfile.first_name || localProfile.last_name ? `${localProfile.first_name} ${localProfile.last_name}`.trim() : user?.username || 'Not set'}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {isAssessmentSubmitted() ? 'Profile & Assessment complete' : 'Assessment pending'}
-              {age !== null && ` | Age: ${age}`}
-            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${isAssessmentSubmitted() ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400'}`}>
+                {isAssessmentSubmitted() ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                {isAssessmentSubmitted() ? 'Profile complete' : 'Assessment pending'}
+              </span>
+              {age !== null && (
+                <span className="text-xs text-muted-foreground">Age: <strong className="text-foreground">{age}</strong></span>
+              )}
+            </div>
           </div>
-        </CardContent>
+        </div>
+        {/* Step indicator */}
+        <div className="flex items-center justify-center gap-2 px-5 py-3 border-t border-border/40 bg-card">
+          <button
+            type="button"
+            onClick={() => setStep('info')}
+            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${step === 'info' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+          >
+            <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[10px] font-bold">1</span>
+            Patient Info
+          </button>
+          <span className="w-8 h-px bg-border" />
+          <button
+            type="button"
+            onClick={() => setStep('medical')}
+            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${step === 'medical' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+          >
+            <span className="w-5 h-5 rounded-full bg-current/20 flex items-center justify-center text-[10px] font-bold">2</span>
+            Medical History
+          </button>
+        </div>
       </Card>
 
       {step === 'info' ? (
@@ -366,6 +403,36 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
               />
               <p className="text-[11px] text-muted-foreground mt-1">{localProfile.address.length}/150 characters</p>
             </div>
+
+            {/* Patient type — new vs existing */}
+            <div>
+              <Label>Are you a new or existing patient? *</Label>
+              <p className="text-[11px] text-muted-foreground mb-2">Existing patients already have a paper record on file at the clinic.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(['new', 'existing'] as const).map(opt => {
+                  const selected = localProfile.patient_type === opt;
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => updateLocalProfile({ patient_type: opt })}
+                      className={`relative rounded-xl border px-3.5 py-3.5 text-left transition-all duration-200 ${selected ? 'border-secondary bg-secondary text-secondary-foreground shadow-md scale-[1.01]' : 'border-border bg-card hover:border-secondary/50 hover:bg-mint/40 hover:-translate-y-0.5 hover:shadow-sm'}`}
+                    >
+                      {selected && (
+                        <span className="absolute top-2 right-2">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </span>
+                      )}
+                      <p className="font-semibold capitalize text-sm">{opt} patient</p>
+                      <p className={`text-[11px] mt-0.5 ${selected ? 'text-secondary-foreground/85' : 'text-muted-foreground'}`}>
+                        {opt === 'new' ? 'First time at QuickDent.' : 'I already have records at the clinic.'}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <Button onClick={handleSaveInfo} className="w-full gap-2" disabled={isSaving}>
               {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <>Continue to Medical History <ChevronRight className="w-4 h-4" /></>}
             </Button>
@@ -402,7 +469,10 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label>Date of last medical check-up</Label>
+                <Label className="flex items-center gap-1.5">
+                  Date of last medical check-up
+                  <span className="text-[10px] font-normal text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">Optional</span>
+                </Label>
                 <div className="grid grid-cols-3 gap-1.5 mt-1">
                   <Select value={checkupParts.month} onValueChange={v => handleCheckupChange('month', v)}>
                     <SelectTrigger className="text-sm h-10"><SelectValue placeholder="Month" /></SelectTrigger>
@@ -425,8 +495,11 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
                 </div>
               </div>
               <div>
-                <Label>Other medical conditions</Label>
-                <Input value={localAssessment.other_medical} onChange={e => updateLocalAssessment({ other_medical: e.target.value })} placeholder="Optional" />
+                <Label className="flex items-center gap-1.5">
+                  Other medical conditions
+                  <span className="text-[10px] font-normal text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">Optional</span>
+                </Label>
+                <Input value={localAssessment.other_medical} onChange={e => updateLocalAssessment({ other_medical: e.target.value })} placeholder="Anything else we should know" />
               </div>
             </div>
 

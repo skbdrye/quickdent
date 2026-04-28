@@ -8,6 +8,8 @@ import { useAuthStore } from '@/lib/store';
 import { FileText, Eye, CalendarDays, Clock, Users, User, Stethoscope } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { ImageGallery } from '@/components/shared/ImageGallery';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface Prescription {
   id: number;
@@ -178,23 +180,28 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
 
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My Prescriptions</h1>
-        <p className="text-muted-foreground">View prescriptions from your dental visits</p>
-      </div>
+      <PageHeader
+        icon={FileText}
+        title="My Prescriptions"
+        description="View prescriptions from your dental visits"
+        actions={appointmentGroups.length > 0 ? (
+          <Badge variant="outline" className="text-[11px] tabular-nums hidden sm:inline-flex">
+            {appointmentGroups.length} visit{appointmentGroups.length !== 1 ? 's' : ''}
+          </Badge>
+        ) : undefined}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : appointmentGroups.length === 0 ? (
-        <Card className="border-border/50 border-dashed">
-          <CardContent className="py-16 text-center">
-            <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="font-medium text-foreground">No prescriptions yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Your prescriptions will appear here after your dental visits</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title="No prescriptions yet"
+          description="Your prescriptions will appear here after your dental visits."
+          tone="muted"
+        />
       ) : (
         <div className="space-y-3">
           {appointmentGroups.map((group, idx) => (
@@ -202,7 +209,7 @@ export default function PrescriptionsView({ highlightAppointmentId, highlightKey
               key={group.appointment_id ?? `group-${idx}`}
               id={group.appointment_id ? `rx-group-${group.appointment_id}` : undefined}
               className={cn(
-                'border-border/50 overflow-hidden transition-all duration-500 hover:shadow-sm',
+                'border-border/50 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-secondary/30',
                 highlightingId === group.appointment_id && 'ring-2 ring-secondary ring-offset-2 shadow-md'
               )}
             >

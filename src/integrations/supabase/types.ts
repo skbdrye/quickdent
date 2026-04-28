@@ -332,6 +332,7 @@ export type Database = {
           is_complete: boolean | null
           last_name: string | null
           middle_name: string | null
+          patient_type: string | null
           phone: string | null
           updated_at: string | null
           user_id: string
@@ -346,6 +347,7 @@ export type Database = {
           is_complete?: boolean | null
           last_name?: string | null
           middle_name?: string | null
+          patient_type?: string | null
           phone?: string | null
           updated_at?: string | null
           user_id: string
@@ -360,6 +362,7 @@ export type Database = {
           is_complete?: boolean | null
           last_name?: string | null
           middle_name?: string | null
+          patient_type?: string | null
           phone?: string | null
           updated_at?: string | null
           user_id?: string
@@ -440,6 +443,7 @@ export type Database = {
       }
       services: {
         Row: {
+          available_days: string[] | null
           created_at: string | null
           id: number
           is_active: boolean | null
@@ -447,6 +451,7 @@ export type Database = {
           sort_order: number | null
         }
         Insert: {
+          available_days?: string[] | null
           created_at?: string | null
           id?: never
           is_active?: boolean | null
@@ -454,6 +459,7 @@ export type Database = {
           sort_order?: number | null
         }
         Update: {
+          available_days?: string[] | null
           created_at?: string | null
           id?: never
           is_active?: boolean | null

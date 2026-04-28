@@ -29,13 +29,13 @@ export function DashboardHeader({
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/80 backdrop-blur-md border-b border-border/50 md:pl-6 transition-shadow">
+    <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-card/85 backdrop-blur-md border-b border-border/60 md:pl-6 transition-shadow shadow-sm">
       <div className="flex items-center gap-2 min-w-0">
-        <div className="w-7 h-7 rounded-lg overflow-hidden md:hidden shrink-0">
+        <div className="w-8 h-8 rounded-lg overflow-hidden md:hidden shrink-0 ring-1 ring-border/50">
           <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
         </div>
         <span className="text-sm font-semibold text-foreground md:hidden truncate">{title || 'QuickDent'}</span>
-        <span className="hidden md:block text-sm font-medium text-foreground truncate">{title}</span>
+        <span className="hidden md:block text-sm font-semibold text-foreground truncate">{title}</span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className="hidden sm:block text-xs text-muted-foreground mr-1 truncate max-w-[120px]">

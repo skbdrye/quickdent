@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,15 +9,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Filter, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2, Stethoscope } from 'lucide-react';
+import { Search, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, ChevronUp, RotateCcw, Check, XCircle, AlertTriangle, ClipboardList, CheckCircle2, Stethoscope, CalendarCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { appointmentsAPI, notificationsAPI, servicesAPI, xraysAPI } from '@/lib/api';
+import { appointmentsAPI, notificationsAPI, servicesAPI, xraysAPI, groupMembersAPI } from '@/lib/api';
 import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 import { MultiImageUpload, type PickedFile, uploadFilesParallel } from '@/components/shared/MultiImageUpload';
 import { ImageGallery } from '@/components/shared/ImageGallery';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { cn, formatTime } from '@/lib/utils';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -50,6 +52,8 @@ interface GroupMember {
   relationship: string | null;
   is_primary: boolean;
   linked_user_id: string | null;
+  /** Services chosen for this member (kept as array to match the DB schema). */
+  services?: string[] | null;
   med_q1: string | null;
   med_q2: string | null;
   med_q2_details: string | null;
@@ -492,6 +496,14 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
 
   const statusOrder: Record<string, number> = { 'Pending': 0, 'Confirmed': 1, 'Completed': 2, 'Cancelled': 3, 'No Show': 4 };
 
+  const statusCounts = useMemo(() => {
+    const acc: Record<string, number> = { all: appointments.length, Pending: 0, Confirmed: 0, Completed: 0, Cancelled: 0, 'No Show': 0 };
+    for (const a of appointments) {
+      if (a.status in acc) acc[a.status] += 1;
+    }
+    return acc;
+  }, [appointments]);
+
   const filteredAppointments = appointments.filter((apt) => {
     const displayName = getDisplayName(apt);
     const q = searchQuery.toLowerCase().trim();
@@ -573,33 +585,57 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Manage Appointments</h1>
-        <p className="text-muted-foreground">View and manage all patient appointments</p>
-      </div>
+      <PageHeader
+        icon={CalendarCheck}
+        title="Manage Appointments"
+        description="View, confirm, reschedule, or cancel every appointment in the system."
+        actions={appointments.length > 0 ? (
+          <Badge variant="outline" className="text-[11px] tabular-nums hidden sm:inline-flex">
+            {appointments.length} total
+          </Badge>
+        ) : undefined}
+      />
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="space-y-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by patient, date, time, or service…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input placeholder="Search by patient, date, time, or service..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 h-10" />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="Confirmed">Confirmed</SelectItem>
-              <SelectItem value="Completed">Completed</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-              <SelectItem value="No Show">No Show</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {([
+            { v: 'all', label: 'All' },
+            { v: 'Pending', label: 'Pending' },
+            { v: 'Confirmed', label: 'Confirmed' },
+            { v: 'Completed', label: 'Completed' },
+            { v: 'Cancelled', label: 'Cancelled' },
+            { v: 'No Show', label: 'No Show' },
+          ]).map(opt => {
+            const active = statusFilter === opt.v;
+            const count = statusCounts[opt.v] ?? 0;
+            return (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => setStatusFilter(opt.v)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 shrink-0',
+                  active
+                    ? 'bg-secondary text-secondary-foreground shadow-sm'
+                    : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {opt.label}
+                <span className={cn(
+                  'inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                  active ? 'bg-secondary-foreground/20 text-secondary-foreground' : 'bg-card text-muted-foreground',
+                )}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <Card>
+      <Card className="border-border/50 overflow-hidden">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
@@ -635,7 +671,28 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                         </div>
                       </TableCell>
                       <TableCell>{new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</TableCell>
-                      <TableCell>{formatTime(apt.appointment_time)}</TableCell>
+                      <TableCell>
+                        {apt.is_group_booking && memberMap.get(apt.id) && memberMap.get(apt.id)!.length > 0 ? (
+                          (() => {
+                            // Group bookings can have members at DIFFERENT times.
+                            // Show every distinct time as a small badge so admins
+                            // can see the full schedule at a glance.
+                            const members = memberMap.get(apt.id) || [];
+                            const times = Array.from(new Set(members.map(m => m.appointment_time).filter(Boolean))).sort();
+                            return (
+                              <div className="flex flex-wrap gap-1">
+                                {times.map(t => (
+                                  <Badge key={t} variant="outline" className="text-[11px] font-medium tabular-nums px-1.5 py-0">
+                                    {formatTime(t)}
+                                  </Badge>
+                                ))}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          formatTime(apt.appointment_time)
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">{getBookingTypeLabel(apt)}</Badge>
                       </TableCell>
@@ -715,7 +772,22 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Time</span>
-                    <span className="font-medium text-foreground">{formatTime(selectedAppointment?.appointment_time || '')}</span>
+                    {selectedAppointment?.is_group_booking && groupMembers.length > 0 ? (
+                      (() => {
+                        const times = Array.from(new Set(groupMembers.map(m => m.appointment_time).filter(Boolean))).sort();
+                        return (
+                          <div className="flex flex-wrap gap-1.5">
+                            {times.map(t => (
+                              <Badge key={t} variant="outline" className="text-xs font-medium tabular-nums">
+                                {formatTime(t)}
+                              </Badge>
+                            ))}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <span className="font-medium text-foreground">{formatTime(selectedAppointment?.appointment_time || '')}</span>
+                    )}
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">Status</span>
@@ -741,8 +813,9 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
               </div>
             </div>
 
-            {/* Service Selector - only for Confirmed status */}
-            {selectedAppointment?.status === 'Confirmed' && (
+            {/* Service Selector - only for Confirmed status (individual bookings only).
+                Group bookings get a per-member selector inside each member card. */}
+            {selectedAppointment?.status === 'Confirmed' && !selectedAppointment?.is_group_booking && (
               <div className="rounded-xl border border-border/50 overflow-hidden">
                 <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center gap-2">
                   <Stethoscope className="w-3.5 h-3.5 text-muted-foreground" />
@@ -780,8 +853,8 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
               </div>
             )}
 
-            {/* Show assigned service for non-confirmed statuses */}
-            {selectedAppointment?.status !== 'Confirmed' && selectedAppointment?.service && (
+            {/* Show assigned service for non-confirmed individual bookings */}
+            {selectedAppointment?.status !== 'Confirmed' && !selectedAppointment?.is_group_booking && selectedAppointment?.service && (
               <div className="rounded-xl border border-border/50 overflow-hidden">
                 <div className="px-4 py-2.5 bg-muted/40 border-b border-border/30 flex items-center gap-2">
                   <Stethoscope className="w-3.5 h-3.5 text-muted-foreground" />
@@ -882,14 +955,20 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                 <div className="divide-y divide-border/30">
                   {groupMembers.map((member) => {
                     const isExpanded = expandedGroupMember === member.id;
+                    const memberService = member.services && member.services.length > 0 ? member.services[0] : '';
                     return (
                       <div key={member.id} className="overflow-hidden">
                         <button className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors" onClick={() => setExpandedGroupMember(isExpanded ? null : member.id)}>
                           <div className="text-left">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium text-foreground text-sm">{member.member_name}</span>
                               {member.is_primary && <Badge variant="outline" className="text-[10px]">Primary</Badge>}
                               {member.relationship && <span className="text-xs text-muted-foreground">({member.relationship})</span>}
+                              {memberService && (
+                                <Badge variant="secondary" className="text-[10px] gap-1">
+                                  <Stethoscope className="w-2.5 h-2.5" /> {memberService}
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                               <span>Time: {formatTime(member.appointment_time)}</span>
@@ -916,6 +995,59 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                                 </div>
                               )}
                             </div>
+
+                            {/* Per-member service assignment (admin-only, when confirmed) */}
+                            {selectedAppointment?.status === 'Confirmed' ? (
+                              <div className="rounded-lg border border-border/40 bg-card overflow-hidden">
+                                <div className="px-3 py-1.5 bg-muted/40 border-b border-border/30 flex items-center gap-1.5">
+                                  <Stethoscope className="w-3 h-3 text-muted-foreground" />
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Assign Service</p>
+                                </div>
+                                <div className="p-3">
+                                  <Select
+                                    value={memberService}
+                                    onValueChange={async (value) => {
+                                      try {
+                                        await groupMembersAPI.updateServices(member.id, [value]);
+                                        // Optimistically update both the local member list and any
+                                        // expanded references so the badge re-renders immediately.
+                                        setGroupMembers(prev => prev.map(m => m.id === member.id ? { ...m, services: [value] } : m));
+                                        setMemberMap(prev => {
+                                          const next = new Map(prev);
+                                          const arr = next.get(selectedAppointment!.id);
+                                          if (arr) next.set(selectedAppointment!.id, arr.map(m => m.id === member.id ? { ...m, services: [value] } : m));
+                                          return next;
+                                        });
+                                        toast({ title: 'Service Assigned', description: `${member.member_name}: "${value}"` });
+                                      } catch {
+                                        toast({ title: 'Error', description: 'Failed to assign service', variant: 'destructive' });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-full h-9 text-sm">
+                                      <SelectValue placeholder="Select a service for this member..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {services.filter(s => s.is_active).map(s => (
+                                        <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {memberService && (
+                                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                                      Current service: <span className="font-medium text-foreground">{memberService}</span>
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ) : memberService ? (
+                              <div className="rounded-lg border border-border/40 bg-card px-3 py-2 flex items-center gap-2">
+                                <Stethoscope className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Service</span>
+                                <span className="text-sm font-medium text-foreground ml-auto">{memberService}</span>
+                              </div>
+                            ) : null}
+
                             <div>
                               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Medical History</p>
                               {renderMemberMedical(member)}

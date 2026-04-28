@@ -6,11 +6,12 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/lib/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Lock, Phone, Loader2, LogOut, Eye, EyeOff } from 'lucide-react';
+import { Lock, Phone, Loader2, LogOut, Eye, EyeOff, Settings as SettingsIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import bcryptjs from 'bcryptjs';
 import { OtpVerification } from '@/components/auth/OtpVerification';
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 export default function UserSettings() {
   const { toast } = useToast();
@@ -184,19 +185,22 @@ export default function UserSettings() {
 
   return (
     <div className="space-y-6 max-w-xl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage your account settings</p>
-      </div>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Settings"
+        description="Manage your account settings"
+      />
 
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Phone className="h-5 w-5" />
+      <Card className="border-border/60 overflow-hidden">
+        <CardHeader className="bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
+          <CardTitle className="flex items-center gap-2.5 text-base">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+              <Phone className="h-4 w-4" />
+            </span>
             Phone Number
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-5">
           <div>
             <Label>Phone Number</Label>
             <div className="flex gap-2 mt-1.5">
@@ -223,14 +227,16 @@ export default function UserSettings() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Lock className="h-5 w-5" />
+      <Card className="border-border/60 overflow-hidden">
+        <CardHeader className="bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
+          <CardTitle className="flex items-center gap-2.5 text-base">
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+              <Lock className="h-4 w-4" />
+            </span>
             Change Password
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-5">
           <div>
             <Label>Current Password</Label>
             <div className="relative">
@@ -249,15 +255,21 @@ export default function UserSettings() {
               </button>
             </div>
             {newPassword.length > 0 && (
-              <div className="mt-2 space-y-1">
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
                 {[
-                  { check: pwChecks.length, label: 'At least 8 characters' },
-                  { check: pwChecks.upper, label: 'At least 1 uppercase letter' },
-                  { check: pwChecks.lower, label: 'At least 1 lowercase letter' },
-                  { check: pwChecks.digit, label: 'At least 1 digit' },
+                  { check: pwChecks.length, label: '8+ characters' },
+                  { check: pwChecks.upper, label: '1 uppercase' },
+                  { check: pwChecks.lower, label: '1 lowercase' },
+                  { check: pwChecks.digit, label: '1 number' },
                 ].map(({ check, label }) => (
-                  <p key={label} className={`text-xs ${check ? 'text-emerald-600' : 'text-muted-foreground'}`}>
-                    {check ? '\u2713' : '\u2022'} {label}
+                  <p
+                    key={label}
+                    className={`text-[11px] flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${check ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30' : 'text-muted-foreground bg-muted/40'}`}
+                  >
+                    <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] font-bold shrink-0 ${check ? 'bg-emerald-600 text-white' : 'bg-muted-foreground/20 text-muted-foreground'}`}>
+                      {check ? '\u2713' : '\u00B7'}
+                    </span>
+                    {label}
                   </p>
                 ))}
               </div>
@@ -282,12 +294,17 @@ export default function UserSettings() {
       </Card>
 
       {/* Logout */}
-      <Card className="border-destructive/30">
+      <Card className="border-destructive/30 overflow-hidden">
         <CardContent className="p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-foreground">Sign Out</p>
-              <p className="text-xs text-muted-foreground">Log out from your account on this device</p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-destructive/10 text-destructive shrink-0">
+                <LogOut className="w-4 h-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">Sign Out</p>
+                <p className="text-xs text-muted-foreground">Log out from your account on this device</p>
+              </div>
             </div>
             <Button
               variant="destructive"

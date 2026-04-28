@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo, useTransition } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, useTransition, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuthStore } from '@/lib/store';
+import { authAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { LogIn, UserPlus, Eye, EyeOff, Check, X } from 'lucide-react';
 import { COUNTRY_CODES } from '@/lib/countries';
@@ -64,6 +65,10 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [showOtp, setShowOtp] = useState(false);
   const [pendingRegData, setPendingRegData] = useState<{ username: string; phone: string; countryCode: string; password: string } | null>(null);
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
+  // Persist the just-registered username independently so that even if
+  // `pendingRegData` is cleared (e.g. by the OTP dialog closing), the
+  // SuccessModal close handler can still pre-fill the Login form.
+  const justRegisteredUsernameRef = useRef<string | null>(null);
 
   // Refresh remembered user when dialog opens
   useEffect(() => {
@@ -145,6 +150,26 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
       return;
     }
 
+    // Pre-flight: confirm username + phone are still available BEFORE we
+    // burn an OTP. Otherwise the user wastes a code only to be told the
+    // account already exists at the final "create account" step.
+    setIsLoading(true);
+    try {
+      const check = await authAPI.checkAvailability(regUsername, cleanPhone, regCountryCode);
+      if (!check.available) {
+        const bad = check as { available: false; field: 'username' | 'phone'; message: string };
+        toast({
+          title: bad.field === 'username' ? 'Username Unavailable' : 'Phone Already Registered',
+          description: bad.message,
+          variant: 'destructive',
+          duration: 3500,
+        });
+        return;
+      }
+    } finally {
+      setIsLoading(false);
+    }
+
     // Show OTP verification before completing registration
     const fullPhone = `${regCountryCode}${cleanPhone}`;
     setPendingRegData({ username: regUsername, phone: cleanPhone, countryCode: regCountryCode, password: regPassword });
@@ -153,24 +178,36 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
 
   const handleOtpVerified = async () => {
     if (!pendingRegData) return;
+    // Snapshot the username before any state change so we can pre-fill the
+    // login form even after the OTP dialog clears `pendingRegData`.
+    const snapshot = pendingRegData;
+    justRegisteredUsernameRef.current = snapshot.username;
     setShowOtp(false);
     setIsLoading(true);
-    const result = await register(pendingRegData.username, pendingRegData.phone, pendingRegData.countryCode, pendingRegData.password);
+    const result = await register(snapshot.username, snapshot.phone, snapshot.countryCode, snapshot.password);
     setIsLoading(false);
     if (result.success) {
-      setSuccessModal({
-        open: true,
-        title: 'Registration Successful!',
-        description: 'Your phone has been verified and your account has been created. You can now login.',
-      });
+      // Force the parent dialog open: an exit click during OTP could have
+      // closed it, but we still want the user to land on the Login tab.
+      onOpenChange(true);
       setTab('login');
+      setLoginPhone(snapshot.username);
+      setLoginPassword('');
+      setShowLoginPassword(false);
       setRegUsername('');
       setRegPhone('');
       setRegPassword('');
       setAgreeTerms(false);
       setPendingRegData(null);
+      setSuccessModal({
+        open: true,
+        title: 'Registration Successful!',
+        description: 'Your phone has been verified and your account has been created. You can now login.',
+      });
     } else {
+      justRegisteredUsernameRef.current = null;
       toast({ title: 'Registration failed', description: result.message, variant: 'destructive', duration: 2500 });
+      setPendingRegData(null);
     }
   };
 
@@ -373,7 +410,20 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
         open={successModal.open}
         title={successModal.title}
         description={successModal.description}
-        onClose={() => setSuccessModal({ open: false, title: '', description: '' })}
+        onClose={() => {
+          setSuccessModal({ open: false, title: '', description: '' });
+          // Always make sure the user lands on the Login tab with their
+          // brand-new username pre-filled — even if they tapped outside or
+          // the OTP dialog cleared transient state.
+          const uname = justRegisteredUsernameRef.current;
+          onOpenChange(true);
+          setTab('login');
+          if (uname) setLoginPhone(uname);
+          setLoginPassword('');
+          setShowLoginPassword(false);
+          justRegisteredUsernameRef.current = null;
+          setPendingRegData(null);
+        }}
       />
     </Dialog>
   );

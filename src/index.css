@@ -138,6 +138,18 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Minor input affordances: smoother focus ring + no layout jitter
+     when the user is typing fast (paint-only style transitions). */
+  input,
+  textarea,
+  select {
+    will-change: auto;
   }
 
   html {

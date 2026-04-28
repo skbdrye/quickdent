@@ -1,18 +1,20 @@
 import { useEffect, useState, useMemo } from 'react';
-import { CalendarDays, Clock, Users, RotateCcw, X, Search, Filter, Info, Stethoscope } from 'lucide-react';
+import { CalendarDays, Clock, Users, RotateCcw, X, Search, Info, Stethoscope, CalendarCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useAuthStore, useAppointmentsStore } from '@/lib/store';
 import { useToast } from '@/hooks/use-toast';
-import { notificationsAPI } from '@/lib/api';
+import { useAuthStore, useAppointmentsStore } from '@/lib/store';
+import { notificationsAPI, groupMembersAPI } from '@/lib/api';
+import type { GroupMember } from '@/lib/types';
 import { statusVariant } from '@/lib/types';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -35,10 +37,36 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
   const [searchQuery, setSearchQuery] = useState('');
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
   const [highlightingId, setHighlightingId] = useState<number | null>(null);
+  // Per-appointment list of group members. The parent appointment row only
+  // stores the booker's slot — every other member can have a different time
+  // and they ALL need to be visible on the appointment card.
+  const [memberMap, setMemberMap] = useState<Record<number, GroupMember[]>>({});
 
   useEffect(() => {
     if (user?.id) fetchUserAppointments(user.id);
   }, [user?.id, fetchUserAppointments]);
+
+  // Hydrate `memberMap` whenever the user's appointments list refreshes.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!user?.id) return;
+      try {
+        const members = await groupMembersAPI.fetchByUser(user.id);
+        if (cancelled) return;
+        const map: Record<number, GroupMember[]> = {};
+        for (const m of members) {
+          const aId = (m as unknown as { appointment_id: number }).appointment_id;
+          if (!aId) continue;
+          (map[aId] ||= []).push(m);
+        }
+        setMemberMap(map);
+      } catch (err) {
+        console.warn('Failed to fetch group members:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, appointments]);
 
   // Scroll to highlighted appointment with re-trigger support via highlightKey
   useEffect(() => {
@@ -77,6 +105,15 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
         return b.appointment_date.localeCompare(a.appointment_date);
       });
   }, [appointments, statusFilter, searchQuery]);
+
+  // Counts for the quick-filter chip strip
+  const statusCounts = useMemo(() => {
+    const acc: Record<string, number> = { all: appointments.length, Pending: 0, Confirmed: 0, Completed: 0, Cancelled: 0, 'No Show': 0 };
+    for (const a of appointments) {
+      if (a.status in acc) acc[a.status] += 1;
+    }
+    return acc;
+  }, [appointments]);
 
   const canModify = (apt: typeof appointments[0]) => {
     if (apt.status !== 'Pending' && apt.status !== 'Confirmed') return false;
@@ -145,53 +182,76 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
 
   return (
     <div className="space-y-5 w-full max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My Appointments</h1>
-        <p className="text-sm text-muted-foreground">View, reschedule, or cancel your appointments</p>
-      </div>
+      <PageHeader
+        icon={CalendarCheck}
+        title="My Appointments"
+        description="View, reschedule, or cancel your appointments"
+      />
 
       {/* Booking Rules Reminder */}
-      <div className="flex items-start gap-3 p-3 rounded-xl bg-secondary/5 border border-secondary/20">
-        <Info className="w-4 h-4 text-secondary mt-0.5 shrink-0" />
-        <div className="text-xs text-foreground/75 space-y-0.5">
+      <div className="flex items-start gap-3 p-3.5 rounded-xl bg-secondary/5 border border-secondary/20">
+        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-secondary/15 text-secondary shrink-0">
+          <Info className="w-4 h-4" />
+        </span>
+        <div className="text-xs text-foreground/80 space-y-0.5">
           <p>Cancellations & rescheduling must be at least <strong className="text-foreground">1 day (24 hours)</strong> before your appointment.</p>
           <p>Rescheduling is allowed <strong className="text-foreground">1 time only</strong> per appointment.</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="space-y-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by service, date, or status..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input
+            placeholder="Search by service, date, or status..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 h-10"
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Pending">Pending</SelectItem>
-              <SelectItem value="Confirmed">Confirmed</SelectItem>
-              <SelectItem value="Completed">Completed</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-              <SelectItem value="No Show">No Show</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {([
+            { v: 'all', label: 'All' },
+            { v: 'Pending', label: 'Pending' },
+            { v: 'Confirmed', label: 'Confirmed' },
+            { v: 'Completed', label: 'Completed' },
+            { v: 'Cancelled', label: 'Cancelled' },
+            { v: 'No Show', label: 'No Show' },
+          ]).map(opt => {
+            const active = statusFilter === opt.v;
+            const count = statusCounts[opt.v] ?? 0;
+            return (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => setStatusFilter(opt.v)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 shrink-0',
+                  active
+                    ? 'bg-secondary text-secondary-foreground shadow-sm'
+                    : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {opt.label}
+                <span className={cn(
+                  'inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                  active ? 'bg-secondary-foreground/20 text-secondary-foreground' : 'bg-card text-muted-foreground',
+                )}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Appointments List */}
       {filteredAppointments.length === 0 ? (
-        <Card className="border-border/50 border-dashed">
-          <CardContent className="p-10 text-center">
-            <CalendarDays className="w-12 h-12 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="font-medium text-foreground">No appointments found</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {statusFilter !== 'all' ? 'Try changing the filter' : 'Book your first appointment to get started'}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={CalendarDays}
+          title="No appointments found"
+          description={statusFilter !== 'all' ? 'Try changing the filter' : 'Book your first appointment to get started'}
+          tone="muted"
+        />
       ) : (
         <div className="space-y-3">
           {filteredAppointments.map(apt => (
@@ -199,7 +259,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
               key={apt.id}
               id={`apt-${apt.id}`}
               className={cn(
-                'border-border/50 overflow-hidden transition-all duration-500',
+                'border-border/50 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-secondary/30',
                 highlightingId === apt.id && 'ring-2 ring-secondary ring-offset-2 shadow-md'
               )}
             >
@@ -225,10 +285,29 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                           <CalendarDays className="w-3 h-3" />
                           {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatTime(apt.appointment_time)}
-                        </span>
+                        {(() => {
+                          // For group bookings list every distinct member time so
+                          // the patient can see every slot they've booked.
+                          if (apt.is_group_booking && memberMap[apt.id]?.length) {
+                            const times = Array.from(new Set(memberMap[apt.id].map(m => m.appointment_time).filter(Boolean))).sort();
+                            return (
+                              <span className="flex items-center gap-1 flex-wrap">
+                                <Clock className="w-3 h-3" />
+                                {times.map((t, i) => (
+                                  <span key={t} className="tabular-nums">
+                                    {formatTime(t)}{i < times.length - 1 && <span className="text-muted-foreground/60">,</span>}
+                                  </span>
+                                ))}
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatTime(apt.appointment_time)}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {apt.notes && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-1">Notes: {apt.notes}</p>

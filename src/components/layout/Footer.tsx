@@ -8,7 +8,9 @@ export function Footer() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-primary-foreground/20 flex items-center justify-center font-bold text-sm text-primary-foreground">Q</div>
+              <div className="w-8 h-8 rounded-lg bg-primary-foreground/10 flex items-center justify-center overflow-hidden">
+                <img src="/logo.png" alt="QuickDent" className="w-full h-full object-contain" />
+              </div>
               <span className="font-semibold text-lg">QuickDent</span>
             </div>
             <p className="text-sm text-primary-foreground/60 leading-relaxed">

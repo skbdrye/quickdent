@@ -1,473 +1,411 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { useClinicStore } from '@/lib/store';
-import { scheduleOverridesAPI } from '@/lib/api';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Save, Calendar as CalendarIcon, AlertTriangle, Trash2, Plus, Minus, Infinity as InfinityIcon, Users, CalendarClock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { TimePicker, formatDisplay as fmtTime12 } from '@/components/shared/TimePicker';
-import {
-  Clock, Save, CalendarDays, Plus, Trash2, ChevronLeft, ChevronRight, CalendarOff, Sparkles,
-} from 'lucide-react';
-import type { ClinicSchedule, ClinicScheduleDay, ScheduleOverride } from '@/lib/types';
+import { clinicSettingsAPI, scheduleOverridesAPI } from '@/lib/api';
+import { TimePicker } from '@/components/shared/TimePicker';
+import type { ClinicSchedule as Schedule, ClinicScheduleDay, ScheduleOverride } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
-const DAYS_OF_WEEK = [
-  { key: 'sunday', short: 'Sun', label: 'Sunday' },
-  { key: 'monday', short: 'Mon', label: 'Monday' },
-  { key: 'tuesday', short: 'Tue', label: 'Tuesday' },
-  { key: 'wednesday', short: 'Wed', label: 'Wednesday' },
-  { key: 'thursday', short: 'Thu', label: 'Thursday' },
-  { key: 'friday', short: 'Fri', label: 'Friday' },
-  { key: 'saturday', short: 'Sat', label: 'Saturday' },
-] as const;
-
-type DayKey = typeof DAYS_OF_WEEK[number]['key'];
+const DAYS = [
+  { key: 'sunday', label: 'Sunday' }, { key: 'monday', label: 'Monday' }, { key: 'tuesday', label: 'Tuesday' },
+  { key: 'wednesday', label: 'Wednesday' }, { key: 'thursday', label: 'Thursday' }, { key: 'friday', label: 'Friday' },
+  { key: 'saturday', label: 'Saturday' },
+];
 
 const DEFAULT_DAY: ClinicScheduleDay = {
-  is_open: true,
-  open_time: '09:00',
-  close_time: '17:00',
-  break_start: '12:00',
-  break_end: '13:00',
+  is_open: true, open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00',
+  doctors_count: 2, max_per_slot: 2, max_daily: null,
 };
 
-const emptyOverrideDraft = {
-  override_date: '',
-  is_open: true,
-  open_time: '09:00',
-  close_time: '17:00',
-  break_start: '12:00',
-  break_end: '13:00',
-  reason: '',
-};
-
-function fmtDateLong(date: string) {
-  try {
-    return new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
+interface CapacityValue {
+  doctors_count?: number | null;
+  max_per_slot?: number | null;
+  max_daily?: number | null;
 }
 
-export default function ClinicSchedule() {
-  const { schedule, fetchSchedule, updateSchedule } = useClinicStore();
-  const { toast } = useToast();
-  const [draft, setDraft] = useState<ClinicSchedule | null>(null);
-  const [saving, setSaving] = useState(false);
+function CapacityRow({ value, onChange, dense }: { value: CapacityValue; onChange: (v: CapacityValue) => void; dense?: boolean }) {
+  const doctors = value.doctors_count ?? 1;
+  const perSlot = value.max_per_slot ?? doctors;
+  const dailyUnlimited = value.max_daily === null || value.max_daily === undefined;
 
-  // Overrides state
-  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
-  const [overrideOpen, setOverrideOpen] = useState(false);
-  const [overrideDraft, setOverrideDraft] = useState({ ...emptyOverrideDraft });
-  const [overrideEditId, setOverrideEditId] = useState<number | null>(null);
-  const [confirmDeleteDate, setConfirmDeleteDate] = useState<string | null>(null);
-
-  // Calendar month view state
-  const [calMonth, setCalMonth] = useState(() => new Date());
-
-  useEffect(() => { fetchSchedule(); refreshOverrides(); }, [fetchSchedule]);
-  useEffect(() => { if (schedule) setDraft(schedule); }, [schedule]);
-
-  async function refreshOverrides() {
-    try {
-      const list = await scheduleOverridesAPI.list();
-      setOverrides(list);
-    } catch (err) {
-      console.error('Failed to load overrides', err);
-    }
-  }
-
-  function updateDay(day: DayKey, patch: Partial<ClinicScheduleDay>) {
-    setDraft(prev => prev ? { ...prev, [day]: { ...(prev[day] || DEFAULT_DAY), ...patch } } : prev);
-  }
-
-  async function handleSaveWeekly() {
-    if (!draft) return;
-    setSaving(true);
-    try {
-      await updateSchedule(draft);
-      toast({ title: 'Saved', description: 'Weekly schedule updated successfully.' });
-    } catch {
-      toast({ title: 'Error', description: 'Could not save schedule.', variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function openCreateOverride(date: string) {
-    setOverrideEditId(null);
-    setOverrideDraft({ ...emptyOverrideDraft, override_date: date });
-    setOverrideOpen(true);
-  }
-
-  function openEditOverride(o: ScheduleOverride) {
-    setOverrideEditId(o.id);
-    setOverrideDraft({
-      override_date: o.override_date,
-      is_open: o.is_open,
-      open_time: o.open_time || '09:00',
-      close_time: o.close_time || '17:00',
-      break_start: o.break_start || '12:00',
-      break_end: o.break_end || '13:00',
-      reason: o.reason || '',
-    });
-    setOverrideOpen(true);
-  }
-
-  async function saveOverride() {
-    if (!overrideDraft.override_date) {
-      toast({ title: 'Date required', description: 'Pick a date for this override.', variant: 'destructive' });
-      return;
-    }
-    try {
-      const payload = {
-        override_date: overrideDraft.override_date,
-        is_open: overrideDraft.is_open,
-        open_time: overrideDraft.is_open ? overrideDraft.open_time : null,
-        close_time: overrideDraft.is_open ? overrideDraft.close_time : null,
-        break_start: overrideDraft.is_open ? overrideDraft.break_start : null,
-        break_end: overrideDraft.is_open ? overrideDraft.break_end : null,
-        reason: overrideDraft.reason || null,
-      } as any;
-      if (overrideEditId !== null) {
-        await scheduleOverridesAPI.upsert(payload);
-        toast({ title: 'Updated', description: `Override for ${fmtDateLong(overrideDraft.override_date)} updated.` });
-      } else {
-        await scheduleOverridesAPI.upsert(payload);
-        toast({ title: 'Saved', description: `Override for ${fmtDateLong(overrideDraft.override_date)} saved.` });
-      }
-      setOverrideOpen(false);
-      refreshOverrides();
-    } catch (err) {
-      const msg = (err as { message?: string } | null)?.message || 'Could not save override.';
-      toast({ title: 'Error', description: msg, variant: 'destructive' });
-    }
-  }
-
-  async function deleteOverride(date: string) {
-    try {
-      await scheduleOverridesAPI.delete(date);
-      toast({ title: 'Removed', description: 'Override deleted.' });
-      setConfirmDeleteDate(null);
-      refreshOverrides();
-    } catch {
-      toast({ title: 'Error', description: 'Could not delete.', variant: 'destructive' });
-    }
-  }
-
-  const overrideMap = useMemo(() => {
-    const m: Record<string, ScheduleOverride> = {};
-    for (const o of overrides) m[o.override_date] = o;
-    return m;
-  }, [overrides]);
-
-  const sortedUpcoming = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return [...overrides].filter(o => o.override_date >= today).sort((a, b) => a.override_date.localeCompare(b.override_date));
-  }, [overrides]);
-
-  // Build month calendar
-  const calendarCells = useMemo(() => {
-    const y = calMonth.getFullYear();
-    const m = calMonth.getMonth();
-    const first = new Date(y, m, 1);
-    const startWeekday = first.getDay();
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const cells: { date: string | null; day: number | null; weekday: number }[] = [];
-    for (let i = 0; i < startWeekday; i++) cells.push({ date: null, day: null, weekday: i });
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dt = new Date(y, m, d);
-      cells.push({ date: dateStr, day: d, weekday: dt.getDay() });
-    }
-    return cells;
-  }, [calMonth]);
-
-  const monthLabel = calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  if (!draft) {
-    return <div className="p-6 text-muted-foreground text-sm">Loading clinic schedule...</div>;
-  }
+  const stepper = (
+    label: string,
+    icon: React.ReactNode,
+    val: number,
+    onSet: (n: number) => void,
+    min = 1,
+    max = 50,
+  ) => (
+    <div className="space-y-1">
+      <Label className="text-[11px] uppercase tracking-tight text-muted-foreground flex items-center gap-1">{icon}{label}</Label>
+      <div className="inline-flex items-center rounded-md border border-border overflow-hidden">
+        <button type="button" className="px-2 py-1.5 hover:bg-muted/60 text-foreground transition-colors" onClick={() => onSet(Math.max(min, val - 1))} aria-label={`Decrease ${label}`}><Minus className="w-3 h-3" /></button>
+        <input
+          type="number"
+          inputMode="numeric"
+          className="w-10 text-center bg-transparent text-sm font-semibold tabular-nums focus:outline-none"
+          value={val}
+          min={min}
+          max={max}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (!Number.isNaN(n)) onSet(Math.min(max, Math.max(min, n)));
+          }}
+        />
+        <button type="button" className="px-2 py-1.5 hover:bg-muted/60 text-foreground transition-colors" onClick={() => onSet(Math.min(max, val + 1))} aria-label={`Increase ${label}`}><Plus className="w-3 h-3" /></button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <CalendarDays className="w-6 h-6 text-secondary" />
-            Clinic Schedule
-          </h1>
-          <p className="text-sm text-muted-foreground">Set your weekly hours and add date overrides for holidays or special days.</p>
-        </div>
-        <Button onClick={handleSaveWeekly} disabled={saving} className="gap-2">
-          <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save weekly hours'}
-        </Button>
-      </div>
-
-      {/* Weekly Hours - card grid */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="w-4 h-4 text-secondary" />
-          <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">Weekly Hours</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-7 gap-3">
-          {DAYS_OF_WEEK.map(({ key, label, short }) => {
-            const day = (draft[key] || DEFAULT_DAY) as ClinicScheduleDay;
-            return (
-              <Card
-                key={key}
-                className={cn(
-                  'border-border/50 transition-all',
-                  day.is_open ? 'shadow-sm hover:shadow-md' : 'bg-muted/30',
-                )}
-              >
-                <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                  <div>
-                    <CardTitle className="text-base">{short}</CardTitle>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mt-0.5">{label}</p>
-                  </div>
-                  <Switch checked={day.is_open} onCheckedChange={v => updateDay(key, { is_open: v })} />
-                </CardHeader>
-                <CardContent className="pt-0">
-                  {day.is_open ? (
-                    <div className="space-y-2.5">
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Open</Label>
-                        <TimePicker value={day.open_time || ''} onChange={v => updateDay(key, { open_time: v })} ariaLabel={`${label} open time`} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/80">Close</Label>
-                        <TimePicker value={day.close_time || ''} onChange={v => updateDay(key, { close_time: v })} ariaLabel={`${label} close time`} />
-                      </div>
-                      <Separator />
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1"><Clock className="w-3 h-3" /> Break</p>
-                      <div className="space-y-1.5">
-                        <TimePicker value={day.break_start || ''} onChange={v => updateDay(key, { break_start: v })} ariaLabel={`${label} break start`} />
-                        <TimePicker value={day.break_end || ''} onChange={v => updateDay(key, { break_end: v })} ariaLabel={`${label} break end`} />
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">Closed all day</p>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Calendar overrides */}
-      <section>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-2 border-border/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-secondary" />
-                  Date Overrides
-                </CardTitle>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1))}><ChevronLeft className="w-4 h-4" /></Button>
-                  <span className="text-sm font-medium text-foreground min-w-[8rem] text-center">{monthLabel}</span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1))}><ChevronRight className="w-4 h-4" /></Button>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">Click any date to add or edit an override.</p>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-7 gap-1 mb-1">
-                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
-                  <div key={d} className="text-center text-[10px] font-semibold text-muted-foreground/70 py-1 uppercase tracking-wider">{d}</div>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {calendarCells.map((c, i) => {
-                  if (!c.date) return <div key={`e-${i}`} />;
-                  const o = overrideMap[c.date];
-                  const isToday = c.date === todayStr;
-                  const isPast = c.date < todayStr;
-                  const isClosed = !!o && !o.is_open;
-                  const isCustom = !!o && o.is_open;
-                  return (
-                    <button
-                      key={c.date}
-                      type="button"
-                      onClick={() => o ? openEditOverride(o) : openCreateOverride(c.date)}
-                      className={cn(
-                        'relative rounded-lg p-2 min-h-[3.5rem] flex flex-col items-center justify-start text-sm transition-colors text-left border',
-                        'hover:border-secondary/50 hover:bg-mint/30',
-                        isPast && 'opacity-50',
-                        isToday && !o && 'border-secondary',
-                        isClosed && 'border-destructive/30 bg-destructive/5 text-destructive',
-                        isCustom && 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
-                        !o && 'border-transparent',
-                      )}
-                    >
-                      <span className={cn('text-sm font-medium', isToday && !o && 'text-secondary')}>{c.day}</span>
-                      {o && (
-                        <span className="text-[8px] uppercase tracking-tight font-semibold mt-0.5 leading-tight">
-                          {o.is_open ? 'Custom' : 'Closed'}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Custom hours</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-destructive" /> Closed (override)</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-secondary" /> Today</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Upcoming overrides list */}
-          <Card className="border-border/50">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CalendarOff className="w-5 h-5 text-secondary" />
-                Upcoming
-              </CardTitle>
-              <Button variant="outline" size="sm" className="h-8 gap-1" onClick={() => openCreateOverride(todayStr)}>
-                <Plus className="w-3.5 h-3.5" /> New
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-2 max-h-[420px] overflow-y-auto">
-              {sortedUpcoming.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic text-center py-4">No upcoming overrides.</p>
-              ) : (
-                sortedUpcoming.map(o => (
-                  <div
-                    key={o.id}
-                    className={cn(
-                      'rounded-lg border p-3 transition-colors hover:border-secondary/60 cursor-pointer',
-                      !o.is_open ? 'border-destructive/20 bg-destructive/5' : 'border-amber-500/20 bg-amber-500/5',
-                    )}
-                    onClick={() => openEditOverride(o)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">{fmtDateLong(o.override_date)}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {o.is_open ? `${fmtTime12(o.open_time || '')} – ${fmtTime12(o.close_time || '')}` : 'Closed all day'}
-                        </p>
-                        {o.reason && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{o.reason}</p>}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Badge variant={o.is_open ? 'pending' : 'destructive'} className="text-[9px]">
-                          {o.is_open ? 'Custom' : 'Closed'}
-                        </Badge>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={(e) => { e.stopPropagation(); setConfirmDeleteDate(o.override_date); }}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      {/* Override editor sheet */}
-      <Sheet open={overrideOpen} onOpenChange={setOverrideOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-secondary" />
-              {overrideEditId ? 'Edit override' : 'New override'}
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-5 space-y-4">
-            <div>
-              <Label className="text-xs">Date</Label>
-              <Input type="date" value={overrideDraft.override_date}
-                onChange={e => setOverrideDraft(d => ({ ...d, override_date: e.target.value }))}
-                disabled={overrideEditId !== null}
-              />
-              {overrideDraft.override_date && (
-                <p className="text-[11px] text-muted-foreground mt-1">{fmtDateLong(overrideDraft.override_date)}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Open this day</p>
-                <p className="text-[11px] text-muted-foreground">Toggle off for a closure (e.g., holiday).</p>
-              </div>
-              <Switch checked={overrideDraft.is_open} onCheckedChange={v => setOverrideDraft(d => ({ ...d, is_open: v }))} />
-            </div>
-
-            {overrideDraft.is_open && (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Open</Label>
-                    <TimePicker value={overrideDraft.open_time}
-                      onChange={v => setOverrideDraft(d => ({ ...d, open_time: v }))} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Close</Label>
-                    <TimePicker value={overrideDraft.close_time}
-                      onChange={v => setOverrideDraft(d => ({ ...d, close_time: v }))} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1"><Clock className="w-3 h-3" /> Break</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <TimePicker value={overrideDraft.break_start}
-                      onChange={v => setOverrideDraft(d => ({ ...d, break_start: v }))} />
-                    <TimePicker value={overrideDraft.break_end}
-                      onChange={v => setOverrideDraft(d => ({ ...d, break_end: v }))} />
-                  </div>
-                </div>
-              </>
+    <div className={cn('grid gap-3', dense ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-3')}>
+      {stepper('Doctors', <Users className="w-3 h-3" />, doctors, (n) => {
+        // Auto-sync max_per_slot when it was previously equal to doctors
+        const sync = (value.max_per_slot == null) || value.max_per_slot === doctors;
+        onChange({ ...value, doctors_count: n, max_per_slot: sync ? n : value.max_per_slot });
+      })}
+      {stepper('Max / slot', <InfinityIcon className="w-3 h-3" />, perSlot, (n) => onChange({ ...value, max_per_slot: n }))}
+      <div className="space-y-1">
+        <Label className="text-[11px] uppercase tracking-tight text-muted-foreground flex items-center gap-1"><CalendarIcon className="w-3 h-3" />Daily cap</Label>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, max_daily: dailyUnlimited ? 20 : null })}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs transition-colors',
+              dailyUnlimited ? 'bg-mint border-secondary/30 text-secondary' : 'border-border text-muted-foreground hover:bg-muted/40',
             )}
-
-            <div>
-              <Label className="text-xs">Reason / note (optional)</Label>
-              <Input value={overrideDraft.reason}
-                placeholder="e.g. Holiday, training day, half-day..."
-                onChange={e => setOverrideDraft(d => ({ ...d, reason: e.target.value }))} />
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              {overrideEditId !== null && (
-                <Button variant="outline" className="text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => setConfirmDeleteDate(overrideDraft.override_date)}>
-                  <Trash2 className="w-4 h-4 mr-1" /> Delete
-                </Button>
-              )}
-              <div className="ml-auto flex gap-2">
-                <Button variant="ghost" onClick={() => setOverrideOpen(false)}>Cancel</Button>
-                <Button onClick={saveOverride} className="gap-1"><Save className="w-4 h-4" /> Save</Button>
-              </div>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      <Dialog open={confirmDeleteDate !== null} onOpenChange={(o) => !o && setConfirmDeleteDate(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete override?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">This will restore the regular weekly hours for that date. Existing bookings on this date are not affected.</p>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setConfirmDeleteDate(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => confirmDeleteDate !== null && deleteOverride(confirmDeleteDate)}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            title="Toggle unlimited daily cap"
+          >
+            <InfinityIcon className="w-3 h-3" /> {dailyUnlimited ? 'Unlimited' : 'Limit'}
+          </button>
+          {!dailyUnlimited && (
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={500}
+              className="w-16 rounded-md border border-border px-2 py-1.5 text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-secondary/40"
+              value={value.max_daily ?? ''}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isNaN(n)) onChange({ ...value, max_daily: Math.max(1, Math.min(500, n)) });
+              }}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+export function ClinicSchedule() {
+  const [schedule, setSchedule] = useState<Schedule>({});
+  const [originalSchedule, setOriginalSchedule] = useState<Schedule>({});
+  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editOverride, setEditOverride] = useState<ScheduleOverride | null>(null);
+  const [overrideDate, setOverrideDate] = useState('');
+  const { toast } = useToast();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [sched, ovrs] = await Promise.all([
+          clinicSettingsAPI.fetchSchedule(),
+          scheduleOverridesAPI.list(),
+        ]);
+        const init: Schedule = {};
+        DAYS.forEach(d => { init[d.key] = sched?.[d.key] ? { ...DEFAULT_DAY, ...sched[d.key] } : { ...DEFAULT_DAY }; });
+        setSchedule(init);
+        setOriginalSchedule(JSON.parse(JSON.stringify(init)));
+        setOverrides(ovrs);
+      } catch (err) {
+        console.error('Schedule load error', err);
+        toast({ title: 'Error', description: 'Failed to load clinic schedule', variant: 'destructive' });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  const isDirty = useMemo(() => JSON.stringify(schedule) !== JSON.stringify(originalSchedule), [schedule, originalSchedule]);
+
+  const updateDay = useCallback((key: string, patch: Partial<ClinicScheduleDay>) => {
+    setSchedule(prev => ({ ...prev, [key]: { ...DEFAULT_DAY, ...prev[key], ...patch } }));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await clinicSettingsAPI.upsertSchedule(schedule);
+      setOriginalSchedule(JSON.parse(JSON.stringify(schedule)));
+      toast({ title: 'Saved', description: 'Weekly clinic hours updated.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Error', description: 'Failed to save schedule', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = () => setSchedule(JSON.parse(JSON.stringify(originalSchedule)));
+
+  const startNewOverride = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setOverrideDate(todayStr);
+    setEditOverride({ override_date: todayStr, is_open: true, open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', reason: '' });
+  };
+  const editExisting = (o: ScheduleOverride) => { setOverrideDate(o.override_date); setEditOverride({ ...o }); };
+
+  const saveOverride = async () => {
+    if (!editOverride || !overrideDate) return;
+    try {
+      const payload: ScheduleOverride = {
+        ...editOverride,
+        override_date: overrideDate,
+        is_open: !!editOverride.is_open,
+        reason: (editOverride.reason || '').trim() || null,
+      };
+      const saved = await scheduleOverridesAPI.upsert(payload);
+      setOverrides(prev => {
+        const without = prev.filter(o => o.override_date !== saved.override_date);
+        return [...without, saved].sort((a, b) => a.override_date.localeCompare(b.override_date));
+      });
+      setEditOverride(null);
+      toast({ title: 'Saved', description: `Override saved for ${saved.override_date}` });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Error', description: 'Failed to save override', variant: 'destructive' });
+    }
+  };
+  const removeOverride = async (date: string) => {
+    if (!confirm(`Remove override for ${date}?`)) return;
+    try {
+      await scheduleOverridesAPI.remove(date);
+      setOverrides(prev => prev.filter(o => o.override_date !== date));
+      toast({ title: 'Removed', description: `Override for ${date} removed.` });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Error', description: 'Failed to remove override', variant: 'destructive' });
+    }
+  };
+
+  if (loading) return <div className="text-center py-12 text-muted-foreground">Loading…</div>;
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <PageHeader
+        icon={CalendarClock}
+        title="Clinic Schedule"
+        description="Weekly hours, break, and per-day booking capacity. Capacity changes apply immediately."
+        actions={(
+          <div className="flex gap-2">
+            {isDirty && <Button variant="outline" onClick={handleReset}>Reset</Button>}
+            <Button onClick={handleSave} disabled={!isDirty || saving} className="gap-2"><Save className="w-4 h-4" />{saving ? 'Saving…' : 'Save'}</Button>
+          </div>
+        )}
+      />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {DAYS.map(d => {
+          const day = schedule[d.key] || DEFAULT_DAY;
+          const today = new Date().toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() === d.key;
+          return (
+            <Card key={d.key} className={cn(
+              'border-border/60 transition-all duration-200 overflow-hidden',
+              !day.is_open && 'bg-muted/30',
+              today && 'ring-1 ring-secondary/30 border-secondary/40 shadow-sm',
+            )}>
+              <CardHeader className={cn('pb-3 border-b border-border/40', day.is_open ? 'bg-gradient-to-br from-mint/40 to-transparent' : 'bg-muted/30')}>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <span className={cn('inline-flex items-center justify-center w-7 h-7 rounded-lg ring-1', day.is_open ? 'bg-card text-secondary ring-secondary/15' : 'bg-muted text-muted-foreground ring-border/40')}>
+                      <CalendarIcon className="w-3.5 h-3.5" />
+                    </span>
+                    {d.label}
+                    {today && <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-full">Today</span>}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Label className={cn('text-xs font-medium', day.is_open ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
+                      {day.is_open ? 'Open' : 'Closed'}
+                    </Label>
+                    <Switch checked={day.is_open} onCheckedChange={(c) => updateDay(d.key, { is_open: c })} />
+                  </div>
+                </div>
+              </CardHeader>
+              {day.is_open && (
+                <CardContent className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Open</Label>
+                      <TimePicker value={day.open_time} onChange={(v) => updateDay(d.key, { open_time: v })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Close</Label>
+                      <TimePicker value={day.close_time} onChange={(v) => updateDay(d.key, { close_time: v })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Break Start</Label>
+                      <TimePicker value={day.break_start} onChange={(v) => updateDay(d.key, { break_start: v })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Break End</Label>
+                      <TimePicker value={day.break_end} onChange={(v) => updateDay(d.key, { break_end: v })} />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border/50 pt-3">
+                    <p className="text-xs font-semibold text-foreground mb-2 uppercase tracking-tight">Capacity</p>
+                    <CapacityRow
+                      value={{
+                        doctors_count: day.doctors_count ?? 1,
+                        max_per_slot: day.max_per_slot ?? day.doctors_count ?? 1,
+                        max_daily: day.max_daily ?? null,
+                      }}
+                      onChange={(v) => updateDay(d.key, v)}
+                    />
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Overrides */}
+      <Card className="border-border/60 overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
+          <div>
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-card text-secondary ring-1 ring-secondary/15">
+                <CalendarIcon className="w-4 h-4" />
+              </span>
+              Date Overrides
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1 ml-12">Override a specific date's hours, status or capacity (e.g., holidays).</p>
+          </div>
+          <Button onClick={startNewOverride} className="gap-2"><Plus className="w-4 h-4" /> Add</Button>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {overrides.length === 0 ? (
+            <EmptyState
+              icon={CalendarIcon}
+              title="No date overrides configured"
+              description="Add an override for holidays or special days."
+              tone="muted"
+            />
+          ) : (
+            <div className="space-y-2">
+              {overrides.map(o => (
+                <div key={o.override_date} className="flex items-center justify-between p-3 rounded-xl border border-border/50 bg-card hover:border-secondary/30 hover:shadow-sm transition-all duration-200">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={cn(
+                      'inline-flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ring-1',
+                      o.is_open ? 'bg-mint text-secondary ring-secondary/15' : 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 ring-red-200 dark:ring-red-800',
+                    )}>
+                      <CalendarIcon className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">{new Date(o.override_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {o.is_open
+                          ? `Open ${o.open_time?.slice(0, 5) || '09:00'}\u2013${o.close_time?.slice(0, 5) || '17:00'}`
+                          : 'Closed'}
+                        {o.reason && ` \u2022 ${o.reason}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!o.is_open && <Badge variant="destructive">Closed</Badge>}
+                    {(o.doctors_count || o.max_per_slot || o.max_daily != null) && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {o.doctors_count ? `${o.doctors_count}d` : ''}
+                        {o.max_per_slot ? ` ${o.max_per_slot}/slot` : ''}
+                        {o.max_daily != null ? ` cap ${o.max_daily}` : ''}
+                      </Badge>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => editExisting(o)}>Edit</Button>
+                    <Button variant="ghost" size="sm" onClick={() => o.override_date && removeOverride(o.override_date)} className="text-destructive hover:text-destructive hover:bg-destructive/10"><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Sheet open={!!editOverride} onOpenChange={(open) => !open && setEditOverride(null)}>
+        <SheetContent className="sm:max-w-md w-full overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{editOverride && overrides.find(o => o.override_date === editOverride.override_date) ? 'Edit Override' : 'Add Override'}</SheetTitle>
+            <SheetDescription>Configure a one-off hours/closure/capacity for a single date.</SheetDescription>
+          </SheetHeader>
+          {editOverride && (
+            <div className="py-5 space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Date</Label>
+                <Input type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} min={new Date().toISOString().split('T')[0]} />
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                <div>
+                  <Label className="text-sm font-medium">Clinic Open</Label>
+                  <p className="text-xs text-muted-foreground">Toggle off to close the clinic for this date.</p>
+                </div>
+                <Switch checked={!!editOverride.is_open} onCheckedChange={(c) => setEditOverride({ ...editOverride, is_open: c })} />
+              </div>
+              {editOverride.is_open && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5"><Label className="text-xs">Open</Label><TimePicker value={editOverride.open_time || '09:00'} onChange={(v) => setEditOverride({ ...editOverride, open_time: v })} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Close</Label><TimePicker value={editOverride.close_time || '17:00'} onChange={(v) => setEditOverride({ ...editOverride, close_time: v })} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Break Start</Label><TimePicker value={editOverride.break_start || '12:00'} onChange={(v) => setEditOverride({ ...editOverride, break_start: v })} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Break End</Label><TimePicker value={editOverride.break_end || '13:00'} onChange={(v) => setEditOverride({ ...editOverride, break_end: v })} /></div>
+                  </div>
+                  <div className="border-t border-border/40 pt-3">
+                    <p className="text-xs font-semibold text-foreground mb-2 uppercase tracking-tight">Capacity (optional)</p>
+                    <CapacityRow
+                      value={{
+                        doctors_count: editOverride.doctors_count ?? null,
+                        max_per_slot: editOverride.max_per_slot ?? null,
+                        max_daily: editOverride.max_daily ?? null,
+                      }}
+                      onChange={(v) => setEditOverride({ ...editOverride, ...v })}
+                      dense
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-2">Leave blank values to inherit from the weekday defaults.</p>
+                  </div>
+                </>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Reason / Note (optional)</Label>
+                <Textarea value={editOverride.reason || ''} onChange={(e) => setEditOverride({ ...editOverride, reason: e.target.value })} placeholder="e.g. Public holiday, training day" rows={3} />
+              </div>
+              <div className="flex items-start gap-2 text-xs text-muted-foreground bg-warning/10 border border-warning/30 rounded-md p-3">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <span>Overrides take priority over weekly hours for the chosen date. Existing approved bookings are not auto-cancelled.</span>
+              </div>
+            </div>
+          )}
+          <SheetFooter>
+            <Button variant="outline" onClick={() => setEditOverride(null)}>Cancel</Button>
+            <Button onClick={saveOverride} disabled={!overrideDate}>Save Override</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+export default ClinicSchedule;

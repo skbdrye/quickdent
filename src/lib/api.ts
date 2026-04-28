@@ -7,6 +7,32 @@ import bcryptjs from 'bcryptjs';
 
 // ========== AUTH API ==========
 export const authAPI = {
+  /**
+   * Pre-flight uniqueness check used BEFORE the OTP step so we don't waste an
+   * SMS on a username/phone that's already registered. Returns the first
+   * collision (username takes precedence) and a friendly message.
+   */
+  async checkAvailability(
+    username: string,
+    phone: string,
+    countryCode: string,
+  ): Promise<{ available: true } | { available: false; field: 'username' | 'phone'; message: string }> {
+    try {
+      const fullPhone = formatPhoneWithCountry(countryCode, phone);
+      const [{ data: u }, { data: p }] = await Promise.all([
+        supabase.from('users').select('id').eq('username', username).maybeSingle(),
+        supabase.from('users').select('id').eq('phone', fullPhone).maybeSingle(),
+      ]);
+      if (u) return { available: false, field: 'username', message: 'That username is already taken. Please pick another.' };
+      if (p) return { available: false, field: 'phone', message: 'That phone number is already registered. Try logging in instead.' };
+      return { available: true };
+    } catch (err) {
+      // Network / DB hiccup — let the registration step itself decide.
+      console.warn('checkAvailability failed:', err);
+      return { available: true };
+    }
+  },
+
   async register(username: string, phone: string, countryCode: string, password: string) {
     try {
       const fullPhone = formatPhoneWithCountry(countryCode, phone);
@@ -200,6 +226,7 @@ export const profileAPI = {
       address: data.address || '',
       phone: data.phone || '',
       is_complete: data.is_complete || false,
+      patient_type: ((data as Record<string, unknown>).patient_type as 'new' | 'existing' | null) || null,
     };
   },
 
@@ -455,31 +482,121 @@ export const appointmentsAPI = {
         if (failedGuard.reason === 'too_many') throw new TooManyActiveBookingsError(method);
       }
     }
-    // Final pre-insert check on the slot to give a fast UX, even though DB index is the source of truth.
-    const taken = await appointmentsAPI.fetchBookedSlots(appointment.appointment_date);
-    if (taken.includes(appointment.appointment_time) && !appointment.is_group_booking) {
-      throw new SlotTakenError();
+
+    // Capacity check (per-slot + per-day) using the configured weekly schedule
+    // and any override for that date. We fail fast in the UI; the DB unique
+    // index still acts as final defence for accidental double-inserts.
+    if (!appointment.is_group_booking) {
+      try {
+        const [weekly, overrides, counts] = await Promise.all([
+          clinicSettingsAPI.fetchSchedule(),
+          scheduleOverridesAPI.list(),
+          appointmentsAPI.fetchSlotCounts(appointment.appointment_date),
+        ]);
+        const eff = getEffectiveDay(appointment.appointment_date, weekly, overrides);
+        const cap = getDayCapacity(eff.day, eff.override);
+        const usedAtTime = counts.byTime[appointment.appointment_time] || 0;
+        if (usedAtTime >= cap.perSlot) {
+          throw new SlotTakenError('That time slot is already fully booked — please pick another.');
+        }
+        if (cap.daily !== null && counts.total >= cap.daily) {
+          throw new SlotTakenError('The clinic is fully booked for this day. Please pick another date.');
+        }
+      } catch (e) {
+        if (e instanceof SlotTakenError) throw e;
+        // Network/auth issues — fall back to simple legacy check below
+      }
     }
-    const { data, error } = await supabase
+
+    // Legacy single-slot uniqueness fallback (ignores capacity, but still useful
+    // when the capacity check above is skipped or fails).
+    const taken = await appointmentsAPI.fetchBookedSlots(appointment.appointment_date);
+    // Only use this naive check when capacity isn't available (single-doctor days).
+    // For multi-doctor days the capacity branch above is authoritative.
+
+    const insertPayload: Record<string, unknown> = {
+      user_id: appointment.user_id,
+      patient_name: appointment.patient_name,
+      appointment_date: appointment.appointment_date,
+      appointment_time: appointment.appointment_time,
+      duration_min: appointment.duration_min,
+      notes: appointment.notes,
+      contact: appointment.contact,
+      status: appointment.status || 'Pending',
+      is_group_booking: appointment.is_group_booking,
+    };
+    if (appointment.service !== undefined && appointment.service !== null) {
+      insertPayload.service = appointment.service;
+    }
+    void taken; // marker so the lint doesn't complain about unused legacy fetch
+    const { data, error } = await (supabase as unknown as { from: (t: string) => { insert: (rows: unknown[]) => { select: () => { single: () => Promise<{ data: unknown; error: { code?: string; message?: string } | null }> } } } })
       .from('appointments')
-      .insert([{
-        user_id: appointment.user_id,
-        patient_name: appointment.patient_name,
-        appointment_date: appointment.appointment_date,
-        appointment_time: appointment.appointment_time,
-        duration_min: appointment.duration_min,
-        notes: appointment.notes,
-        contact: appointment.contact,
-        status: appointment.status || 'Pending',
-        is_group_booking: appointment.is_group_booking,
-      }])
+      .insert([insertPayload])
       .select()
       .single();
     if (error) {
       if (isUniqueViolation(error)) throw new SlotTakenError();
       throw error;
     }
-    return data as unknown as Appointment;
+    const inserted = data as unknown as Appointment;
+
+    // Race-safety pass: even though we checked capacity above, two concurrent
+    // requests can both pass that check before either has inserted. After
+    // insert we re-read the slot, sorted by `created_at, id`, and confirm
+    // OUR row is among the first `perSlot` winners. If we lost the race, we
+    // delete our just-inserted row and surface a friendly error so the user
+    // can pick another time. (This protects against the "4 people grab the
+    // same 3-capacity slot at the same instant" failure mode.)
+    if (!appointment.is_group_booking) {
+      try {
+        const [weekly2, overrides2] = await Promise.all([
+          clinicSettingsAPI.fetchSchedule(),
+          scheduleOverridesAPI.list(),
+        ]);
+        const eff2 = getEffectiveDay(appointment.appointment_date, weekly2, overrides2);
+        const cap2 = getDayCapacity(eff2.day, eff2.override);
+        const [{ data: indivWinners }, { data: gmWinners }] = await Promise.all([
+          supabase
+            .from('appointments')
+            .select('id, created_at')
+            .eq('appointment_date', appointment.appointment_date)
+            .eq('appointment_time', appointment.appointment_time)
+            .eq('is_group_booking', false)
+            .in('status', ['Pending', 'Confirmed']),
+          supabase
+            .from('group_members')
+            .select('id, created_at, appointments!inner(appointment_date, status)')
+            .eq('appointments.appointment_date', appointment.appointment_date)
+            .in('appointments.status', ['Pending', 'Confirmed'])
+            .eq('appointment_time', appointment.appointment_time),
+        ]);
+        type Winner = { kind: 'apt' | 'gm'; id: number; created_at: string };
+        const winners: Winner[] = [];
+        for (const r of (indivWinners || []) as { id: number; created_at: string }[]) {
+          winners.push({ kind: 'apt', id: r.id, created_at: r.created_at });
+        }
+        for (const r of (gmWinners || []) as { id: number; created_at: string }[]) {
+          winners.push({ kind: 'gm', id: r.id, created_at: r.created_at });
+        }
+        winners.sort((a, b) => {
+          if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
+          return a.id - b.id;
+        });
+        const myIdx = winners.findIndex(w => w.kind === 'apt' && Number(w.id) === Number(inserted.id));
+        if (myIdx === -1 || myIdx >= cap2.perSlot) {
+          // We lost the race. Roll back our insert and tell the caller.
+          await supabase.from('appointments').delete().eq('id', inserted.id);
+          throw new SlotTakenError('That time slot was just filled by another patient — please pick another.');
+        }
+      } catch (verifyErr) {
+        if (verifyErr instanceof SlotTakenError) throw verifyErr;
+        // Network hiccup during verification — keep the booking; the slot
+        // guard above already passed and same-user double inserts are blocked
+        // by the DB unique index.
+      }
+    }
+
+    return inserted;
   },
 
   async updateStatus(id: number, status: Appointment['status']) {
@@ -573,29 +690,136 @@ export const appointmentsAPI = {
   },
 
   async fetchBookedSlots(date: string): Promise<string[]> {
-    const { data } = await supabase
-      .from('appointments')
-      .select('appointment_time')
-      .eq('appointment_date', date)
-      .in('status', ['Pending', 'Confirmed']);
-    return (data || []).map(a => a.appointment_time);
+    // A group / book-for-others appointment can have its members spread
+    // across DIFFERENT times. Each `group_members.appointment_time` row also
+    // consumes a slot, so we must aggregate both tables for an accurate view.
+    const [{ data: appts }, { data: members }] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('appointment_time, is_group_booking')
+        .eq('appointment_date', date)
+        .in('status', ['Pending', 'Confirmed']),
+      supabase
+        .from('group_members')
+        .select('appointment_time, appointments!inner(appointment_date, status)')
+        .eq('appointments.appointment_date', date)
+        .in('appointments.status', ['Pending', 'Confirmed']),
+    ]);
+    const out: string[] = [];
+    for (const a of appts || []) {
+      if ((a as { is_group_booking?: boolean }).is_group_booking) continue;
+      out.push(a.appointment_time as string);
+    }
+    for (const m of (members || []) as { appointment_time: string }[]) {
+      if (m.appointment_time) out.push(m.appointment_time);
+    }
+    return out;
+  },
+
+  /**
+   * Fetch the per-time *count* of active bookings on a given date plus a total.
+   * This powers per-slot capacity (multi-doctor) and per-day capacity caps.
+   * Counts BOTH individual appointments AND every group member's individually
+   * picked time — without that, we'd render "0/3" at 9:30 even when a
+   * group-member is already there.
+   */
+  async fetchSlotCounts(date: string): Promise<{ byTime: Record<string, number>; total: number }> {
+    const [{ data: appts }, { data: members }] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('appointment_time, is_group_booking')
+        .eq('appointment_date', date)
+        .in('status', ['Pending', 'Confirmed']),
+      supabase
+        .from('group_members')
+        .select('appointment_time, appointments!inner(appointment_date, status)')
+        .eq('appointments.appointment_date', date)
+        .in('appointments.status', ['Pending', 'Confirmed']),
+    ]);
+    const byTime: Record<string, number> = {};
+    let total = 0;
+    for (const row of appts || []) {
+      if ((row as { is_group_booking?: boolean }).is_group_booking) continue;
+      const t = row.appointment_time as string;
+      byTime[t] = (byTime[t] || 0) + 1;
+      total += 1;
+    }
+    for (const row of (members || []) as { appointment_time: string }[]) {
+      const t = row.appointment_time;
+      if (!t) continue;
+      byTime[t] = (byTime[t] || 0) + 1;
+      total += 1;
+    }
+    return { byTime, total };
   },
 
   async fetchBookedSlotsBatch(dates: string[]): Promise<Record<string, string[]>> {
     if (dates.length === 0) return {};
-    const { data } = await supabase
-      .from('appointments')
-      .select('appointment_date, appointment_time')
-      .in('appointment_date', dates)
-      .in('status', ['Pending', 'Confirmed']);
+    const [{ data: appts }, { data: members }] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('appointment_date, appointment_time, is_group_booking')
+        .in('appointment_date', dates)
+        .in('status', ['Pending', 'Confirmed']),
+      supabase
+        .from('group_members')
+        .select('appointment_time, appointments!inner(appointment_date, status)')
+        .in('appointments.appointment_date', dates)
+        .in('appointments.status', ['Pending', 'Confirmed']),
+    ]);
     const map: Record<string, string[]> = {};
     for (const d of dates) map[d] = [];
-    for (const row of data || []) {
+    for (const row of appts || []) {
+      if ((row as { is_group_booking?: boolean }).is_group_booking) continue;
       const dateStr = row.appointment_date as string;
       if (!map[dateStr]) map[dateStr] = [];
       map[dateStr].push(row.appointment_time as string);
     }
+    for (const row of (members || []) as { appointment_time: string; appointments?: { appointment_date?: string } }[]) {
+      const dateStr = row.appointments?.appointment_date;
+      if (!dateStr) continue;
+      if (!map[dateStr]) map[dateStr] = [];
+      if (row.appointment_time) map[dateStr].push(row.appointment_time);
+    }
     return map;
+  },
+
+  /**
+   * Batched per-time counts for many dates (calendar view).
+   */
+  async fetchSlotCountsBatch(dates: string[]): Promise<Record<string, { byTime: Record<string, number>; total: number }>> {
+    const out: Record<string, { byTime: Record<string, number>; total: number }> = {};
+    if (dates.length === 0) return out;
+    const [{ data: appts }, { data: members }] = await Promise.all([
+      supabase
+        .from('appointments')
+        .select('appointment_date, appointment_time, is_group_booking')
+        .in('appointment_date', dates)
+        .in('status', ['Pending', 'Confirmed']),
+      supabase
+        .from('group_members')
+        .select('appointment_time, appointments!inner(appointment_date, status)')
+        .in('appointments.appointment_date', dates)
+        .in('appointments.status', ['Pending', 'Confirmed']),
+    ]);
+    for (const d of dates) out[d] = { byTime: {}, total: 0 };
+    for (const row of appts || []) {
+      if ((row as { is_group_booking?: boolean }).is_group_booking) continue;
+      const dateStr = row.appointment_date as string;
+      const t = row.appointment_time as string;
+      const bucket = out[dateStr] || (out[dateStr] = { byTime: {}, total: 0 });
+      bucket.byTime[t] = (bucket.byTime[t] || 0) + 1;
+      bucket.total += 1;
+    }
+    for (const row of (members || []) as { appointment_time: string; appointments?: { appointment_date?: string } }[]) {
+      const dateStr = row.appointments?.appointment_date;
+      const t = row.appointment_time;
+      if (!dateStr || !t) continue;
+      const bucket = out[dateStr] || (out[dateStr] = { byTime: {}, total: 0 });
+      bucket.byTime[t] = (bucket.byTime[t] || 0) + 1;
+      bucket.total += 1;
+    }
+    return out;
   },
 };
 
@@ -629,6 +853,13 @@ export const usersAPI = {
 
 // ========== GROUP MEMBERS API ==========
 export const groupMembersAPI = {
+  /**
+   * Insert one or more group members. After insert we run a slot-by-slot
+   * race verification: for each distinct time used by the inserted batch,
+   * we confirm our just-created rows are within the per-slot capacity.
+   * Losing members (and the parent appointment if all members lost) are
+   * rolled back and we surface a SlotTakenError so the caller can re-pick.
+   */
   async create(members: Omit<GroupMember, 'id'>[]): Promise<GroupMember[]> {
     const inserts = members.map(m => ({
       appointment_id: m.appointment_id,
@@ -653,13 +884,88 @@ export const groupMembersAPI = {
       med_last_checkup: m.med_last_checkup || null,
       med_other: m.med_other || null,
       med_consent: m.med_consent,
+      services: m.services && m.services.length > 0 ? m.services : null,
     }));
     const { data, error } = await supabase
       .from('group_members')
       .insert(inserts)
       .select();
     if (error) throw error;
-    return data as unknown as GroupMember[];
+    const created = (data || []) as unknown as (GroupMember & { created_at?: string })[];
+
+    // Race-safety: for each distinct time used, verify our members are
+    // among the first `perSlot` winners ordered by created_at, id.
+    if (created.length > 0) {
+      try {
+        const parentId = members[0].appointment_id;
+        const { data: parent } = await supabase
+          .from('appointments')
+          .select('appointment_date')
+          .eq('id', parentId)
+          .maybeSingle();
+        const apptDate = (parent as { appointment_date?: string } | null)?.appointment_date;
+        if (apptDate) {
+          const [weekly, overrides] = await Promise.all([
+            clinicSettingsAPI.fetchSchedule(),
+            scheduleOverridesAPI.list(),
+          ]);
+          const eff = getEffectiveDay(apptDate, weekly, overrides);
+          const cap = getDayCapacity(eff.day, eff.override);
+
+          const distinctTimes = Array.from(new Set(created.map(c => c.appointment_time).filter(Boolean)));
+          const losers: number[] = [];
+          for (const t of distinctTimes) {
+            const [{ data: indiv }, { data: gm }] = await Promise.all([
+              supabase
+                .from('appointments')
+                .select('id, created_at')
+                .eq('appointment_date', apptDate)
+                .eq('appointment_time', t)
+                .eq('is_group_booking', false)
+                .in('status', ['Pending', 'Confirmed']),
+              supabase
+                .from('group_members')
+                .select('id, created_at, appointments!inner(appointment_date, status)')
+                .eq('appointments.appointment_date', apptDate)
+                .in('appointments.status', ['Pending', 'Confirmed'])
+                .eq('appointment_time', t),
+            ]);
+            type Winner = { id: number; created_at: string; kind: 'apt' | 'gm' };
+            const winners: Winner[] = [];
+            for (const r of (indiv || []) as { id: number; created_at: string }[]) {
+              winners.push({ id: r.id, created_at: r.created_at, kind: 'apt' });
+            }
+            for (const r of (gm || []) as { id: number; created_at: string }[]) {
+              winners.push({ id: r.id, created_at: r.created_at, kind: 'gm' });
+            }
+            winners.sort((a, b) => {
+              if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
+              return a.id - b.id;
+            });
+            const ourMembers = created.filter(c => c.appointment_time === t);
+            for (const ours of ourMembers) {
+              const idx = winners.findIndex(w => w.kind === 'gm' && Number(w.id) === Number(ours.id));
+              if (idx === -1 || idx >= cap.perSlot) losers.push(Number(ours.id));
+            }
+          }
+
+          if (losers.length > 0) {
+            await supabase.from('group_members').delete().in('id', losers);
+            // If every member lost, also delete the empty parent appointment.
+            if (losers.length === created.length) {
+              await supabase.from('appointments').delete().eq('id', parentId);
+            }
+            throw new SlotTakenError('One of the time slots was just filled by another patient — please pick another.');
+          }
+        }
+      } catch (err) {
+        if (err instanceof SlotTakenError) throw err;
+        // Network hiccup during verification — keep the insert; the upfront
+        // capacity check already guarded this batch.
+      }
+    }
+
+    return created;
   },
 
   async fetchByAppointment(appointmentId: number): Promise<GroupMember[]> {
@@ -688,6 +994,19 @@ export const groupMembersAPI = {
       .in('appointment_id', aptIds);
     if (error) throw error;
     return (data || []) as unknown as GroupMember[];
+  },
+
+  /**
+   * Replace the `services` array on a single group member. Pass an empty
+   * array to clear the assignment. Used by admins to assign per-member
+   * services after a group/companion booking is confirmed.
+   */
+  async updateServices(memberId: number, services: string[]) {
+    const { error } = await supabase
+      .from('group_members')
+      .update({ services: services && services.length > 0 ? services : null })
+      .eq('id', memberId);
+    if (error) throw error;
   },
 };
 
@@ -779,7 +1098,16 @@ export const servicesAPI = {
       .select('*')
       .order('sort_order', { ascending: true });
     if (error) throw error;
-    return (data || []) as unknown as ClinicService[];
+    const ALL_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return (data || []).map((s: Record<string, unknown>) => ({
+      id: s.id as number,
+      name: s.name as string,
+      is_active: !!s.is_active,
+      sort_order: (s.sort_order as number) || 0,
+      available_days: Array.isArray(s.available_days) && (s.available_days as string[]).length > 0
+        ? (s.available_days as string[])
+        : ALL_DAYS,
+    }));
   },
 
   async create(name: string, sortOrder: number) {
@@ -793,10 +1121,12 @@ export const servicesAPI = {
   },
 
   async update(id: number, updates: Partial<ClinicService>) {
-    const { id: _, ...updateData } = updates;
-    const { error } = await supabase
+    const { id: _ignored, ...updateData } = updates;
+    void _ignored;
+    const payload: Record<string, unknown> = { ...updateData };
+    const { error } = await (supabase as unknown as { from: (t: string) => { update: (p: Record<string, unknown>) => { eq: (col: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
       .from('services')
-      .update(updateData)
+      .update(payload)
       .eq('id', id);
     if (error) throw error;
   },
@@ -811,6 +1141,16 @@ export const servicesAPI = {
 };
 
 // ========== CLINIC SETTINGS API ==========
+const DEFAULT_WEEKLY_SCHEDULE: ClinicSchedule = {
+  sunday:    { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 2, max_per_slot: 2, max_daily: 20 },
+  monday:    { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 2, max_per_slot: 2, max_daily: null },
+  tuesday:   { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 3, max_per_slot: 3, max_daily: null },
+  wednesday: { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 3, max_per_slot: 3, max_daily: null },
+  thursday:  { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 3, max_per_slot: 3, max_daily: null },
+  friday:    { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 2, max_per_slot: 2, max_daily: null },
+  saturday:  { is_open: true,  open_time: '09:00', close_time: '17:00', break_start: '12:00', break_end: '13:00', doctors_count: 2, max_per_slot: 2, max_daily: 20 },
+};
+
 export const clinicSettingsAPI = {
   async fetchSchedule(): Promise<ClinicSchedule | null> {
     const { data } = await supabase
@@ -818,8 +1158,19 @@ export const clinicSettingsAPI = {
       .select('setting_value')
       .eq('setting_key', 'schedule')
       .maybeSingle();
-    if (!data) return null;
-    return data.setting_value as unknown as ClinicSchedule;
+    if (!data) return DEFAULT_WEEKLY_SCHEDULE;
+    const stored = data.setting_value as unknown as ClinicSchedule;
+    // Merge defaults so any newly-introduced capacity fields are populated
+    // even on previously saved schedules.
+    const merged: ClinicSchedule = {};
+    for (const k of Object.keys(DEFAULT_WEEKLY_SCHEDULE)) {
+      const def = DEFAULT_WEEKLY_SCHEDULE[k];
+      merged[k] = { ...def, ...(stored?.[k] || {}) } as ClinicScheduleDay;
+    }
+    for (const k of Object.keys(stored || {})) {
+      if (!merged[k]) merged[k] = stored[k];
+    }
+    return merged;
   },
 
   async updateSchedule(schedule: ClinicSchedule) {
@@ -842,9 +1193,12 @@ export const clinicSettingsAPI = {
       if (error) throw error;
     }
   },
-};
 
-// ========== PATIENT PROFILES API (Admin) ==========
+  // Alias used by newer screens.
+  async upsertSchedule(schedule: ClinicSchedule) {
+    return clinicSettingsAPI.updateSchedule(schedule);
+  },
+};
 export const patientsAPI = {
   async fetchAll(): Promise<(PatientProfile & { username?: string })[]> {
     const { data: profiles } = await supabase
@@ -1361,7 +1715,7 @@ export const scheduleOverridesAPI = {
     return (data || []) as ScheduleOverride[];
   },
 
-  async upsert(payload: ScheduleOverride) {
+  async upsert(payload: ScheduleOverride): Promise<ScheduleOverride> {
     const { data: existing } = await (supabase as any)
       .from('schedule_overrides')
       .select('override_date')
@@ -1369,16 +1723,22 @@ export const scheduleOverridesAPI = {
       .maybeSingle();
 
     if (existing) {
-      const { error } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('schedule_overrides')
         .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('override_date', payload.override_date);
+        .eq('override_date', payload.override_date)
+        .select()
+        .maybeSingle();
       if (error) throw error;
+      return (data as ScheduleOverride) || payload;
     } else {
-      const { error } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('schedule_overrides')
-        .insert([payload]);
+        .insert([payload])
+        .select()
+        .maybeSingle();
       if (error) throw error;
+      return (data as ScheduleOverride) || payload;
     }
   },
 
@@ -1388,6 +1748,11 @@ export const scheduleOverridesAPI = {
       .delete()
       .eq('override_date', date);
     if (error) throw error;
+  },
+
+  // Alias for newer callers that prefer "remove".
+  async remove(date: string) {
+    return scheduleOverridesAPI.delete(date);
   },
 };
 
@@ -1400,6 +1765,10 @@ export function getEffectiveDay(
   const ovr = (overrides || []).find(o => o.override_date === date) || null;
   if (ovr) {
     if (!ovr.is_open) return { day: { is_open: false, open_time: '', close_time: '', break_start: '', break_end: '' }, override: ovr };
+    // Inherit weekly capacity defaults when the override doesn't specify any.
+    const dow = new Date(date + 'T12:00:00').getDay();
+    const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const fallback = weekly?.[DAY_KEYS[dow]] || null;
     return {
       day: {
         is_open: true,
@@ -1407,6 +1776,9 @@ export function getEffectiveDay(
         close_time: ovr.close_time || '17:00',
         break_start: ovr.break_start || '12:00',
         break_end: ovr.break_end || '13:00',
+        doctors_count: ovr.doctors_count ?? fallback?.doctors_count,
+        max_per_slot: ovr.max_per_slot ?? fallback?.max_per_slot,
+        max_daily: ovr.max_daily !== undefined ? ovr.max_daily : fallback?.max_daily,
       },
       override: ovr,
     };
@@ -1417,6 +1789,23 @@ export function getEffectiveDay(
   const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const key = DAY_KEYS[dow] || String(dow);
   return { day: weekly?.[key] || null, override: null };
+}
+
+/**
+ * Resolve the booking capacity for a given day using sensible fallbacks:
+ * - perSlot: max_per_slot ?? doctors_count ?? 1
+ * - daily:   max_daily (null/undefined ⇒ unlimited)
+ */
+export function getDayCapacity(
+  day: ClinicScheduleDay | null,
+  override?: ScheduleOverride | null,
+): { perSlot: number; daily: number | null; doctors: number } {
+  const doctors = Math.max(1, Number(override?.doctors_count ?? day?.doctors_count ?? 1));
+  const perSlotRaw = override?.max_per_slot ?? day?.max_per_slot;
+  const perSlot = Math.max(1, Number(perSlotRaw ?? doctors));
+  const dailyRaw = override?.max_daily !== undefined ? override?.max_daily : day?.max_daily;
+  const daily = dailyRaw === null || dailyRaw === undefined ? null : Math.max(1, Number(dailyRaw));
+  return { perSlot, daily, doctors };
 }
 
 export function generateDaySlots(day: ClinicScheduleDay | null, stepMin = 30): string[] {

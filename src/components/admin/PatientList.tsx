@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ClipboardList, Search, ShieldBan, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { ClipboardList, Search, ShieldBan, ShieldCheck, AlertTriangle, Users, UserPlus, UserCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { banAPI } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -13,9 +13,11 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 import { SuccessModal } from '@/components/shared/SuccessModal';
 import { ImageGallery } from '@/components/shared/ImageGallery';
+import { PageHeader } from '@/components/shared/PageHeader';
 
 interface PatientProfileData {
   id: number;
@@ -194,16 +196,48 @@ export default function PatientList() {
     return p.member_name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
+  const totals = useMemo(() => ({
+    all: registeredPatients.length + groupMemberPatients.length,
+    registered: registeredPatients.length,
+    companions: groupMemberPatients.length,
+    banned: registeredPatients.filter(p => p.banData?.is_banned).length,
+  }), [registeredPatients, groupMemberPatients]);
+
+  const summaryCards = [
+    { label: 'All Patients', value: totals.all, icon: Users, bg: 'bg-blue-50 dark:bg-blue-950/30', color: 'text-blue-600 dark:text-blue-400', ring: 'ring-blue-200 dark:ring-blue-800' },
+    { label: 'Registered', value: totals.registered, icon: UserCheck, bg: 'bg-emerald-50 dark:bg-emerald-950/30', color: 'text-emerald-600 dark:text-emerald-400', ring: 'ring-emerald-200 dark:ring-emerald-800' },
+    { label: 'Companions', value: totals.companions, icon: UserPlus, bg: 'bg-violet-50 dark:bg-violet-950/30', color: 'text-violet-600 dark:text-violet-400', ring: 'ring-violet-200 dark:ring-violet-800' },
+    { label: 'Banned', value: totals.banned, icon: ShieldBan, bg: 'bg-red-50 dark:bg-red-950/30', color: 'text-red-600 dark:text-red-400', ring: 'ring-red-200 dark:ring-red-800' },
+  ];
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Patients</h1>
-        <p className="text-muted-foreground">View all patients including unregistered companions</p>
+      <PageHeader
+        icon={Users}
+        title="Patients"
+        description="View all patients including unregistered companions and ban status."
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {summaryCards.map((s) => (
+          <Card key={s.label} className="border-border/50 overflow-hidden relative group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+            <div aria-hidden className={cn('pointer-events-none absolute -right-6 -top-6 w-20 h-20 rounded-full blur-2xl opacity-70 group-hover:opacity-100 transition-opacity', s.bg)} />
+            <CardContent className="p-4 flex items-center gap-3 relative">
+              <div className={cn('p-2.5 rounded-xl ring-1 shrink-0', s.bg, s.ring)}>
+                <s.icon className={cn('w-5 h-5', s.color)} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] sm:text-xs text-muted-foreground uppercase tracking-wider font-medium truncate">{s.label}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-foreground tabular-nums leading-tight">{s.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search patients..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+        <Input placeholder="Search patients by name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 h-10" />
       </div>
 
       <Card>

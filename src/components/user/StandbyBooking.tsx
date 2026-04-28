@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthStore, useStandbyStore, useProfileStore, useAppointmentsStore, useClinicStore } from '@/lib/store';
 import { notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay, BookingCooldownError, TooManyActiveBookingsError } from '@/lib/api';
@@ -14,10 +13,12 @@ import { SuccessModal } from '@/components/shared/SuccessModal';
 import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
 import { CompanionPicker } from '@/components/shared/CompanionPicker';
 import { MedicalAssessmentForm, emptyMedical, type MedicalAssessmentFields } from '@/components/shared/MedicalAssessmentForm';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { BookmarkCheck } from 'lucide-react';
 import {
   Clock, CalendarDays, AlertTriangle, Loader2, X, CheckCircle2, Timer, Ban,
-  ChevronLeft, ChevronRight, Info, User as UserIcon, Users,
+  Info, User as UserIcon, Users,
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import {
@@ -382,17 +383,20 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
 
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Standby / Walk-in Queue</h1>
-        <p className="text-muted-foreground">Request a slot when the schedule is fully booked</p>
-      </div>
+      <PageHeader
+        icon={Timer}
+        title="Standby / Walk-in Queue"
+        description="Request a slot when the schedule is fully booked"
+      />
 
       {/* How it works */}
-      <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+      <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-sm text-foreground/80 space-y-1">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 shrink-0 ring-1 ring-amber-200 dark:ring-amber-800">
+              <AlertTriangle className="w-4 h-4" />
+            </span>
+            <div className="text-sm text-foreground/80 space-y-1 min-w-0">
               <p className="font-semibold text-foreground">How it works</p>
               <ul className="space-y-0.5 text-xs">
                 <li>Standby is only available when your preferred date is fully booked.</li>
@@ -406,18 +410,55 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
       </Card>
 
       {/* Request Form */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">New Standby Request</CardTitle>
+      <Card className="border-border/60 overflow-hidden">
+        <CardHeader className="pb-3 bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-card text-secondary ring-1 ring-secondary/15">
+              <Clock className="w-4 h-4" />
+            </span>
+            New Standby Request
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          {/* For-self / For-others toggle */}
-          <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="mb-5">
-            <TabsList className="grid grid-cols-2 w-full sm:w-auto">
-              <TabsTrigger value="self" className="gap-1.5"><UserIcon className="w-4 h-4" /> For myself</TabsTrigger>
-              <TabsTrigger value="other" className="gap-1.5"><Users className="w-4 h-4" /> For someone else</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <CardContent className="pt-5">
+          {/* For-self / For-others toggle — as a 2-up pill picker */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-muted/40 rounded-xl mb-5">
+            {([
+              { value: 'self' as Mode, label: 'For myself', icon: UserIcon, desc: 'Use my profile' },
+              { value: 'other' as Mode, label: 'For someone else', icon: Users, desc: 'Family or friend' },
+            ]).map(opt => {
+              const selected = mode === opt.value;
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setMode(opt.value)}
+                  className={cn(
+                    'relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-all duration-200',
+                    selected
+                      ? 'bg-card shadow-sm ring-1 ring-secondary/20'
+                      : 'text-muted-foreground hover:bg-card/60',
+                  )}
+                >
+                  <span className={cn(
+                    'inline-flex items-center justify-center w-8 h-8 rounded-lg shrink-0 transition-colors',
+                    selected ? 'bg-secondary text-secondary-foreground' : 'bg-muted/60 text-muted-foreground',
+                  )}>
+                    <Icon className="w-4 h-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={cn('block text-xs sm:text-sm font-semibold leading-tight truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
+                      {opt.label}
+                    </span>
+                    <span className="block text-[10px] sm:text-[11px] text-muted-foreground leading-tight truncate mt-0.5">
+                      {opt.desc}
+                    </span>
+                  </span>
+                  {selected && <CheckCircle2 className="w-4 h-4 text-secondary shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {mode === 'self' ? (
@@ -427,121 +468,144 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Patient Details</p>
-                  {user?.id && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 text-xs"
-                      onClick={() => setCompanionPickerOpen(true)}
-                    >
-                      <BookmarkCheck className="w-3.5 h-3.5" /> Use saved companion
-                    </Button>
-                  )}
-                </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="other-name">Patient name *</Label>
-                    <Input id="other-name" value={otherName} onChange={(e) => setOtherName(e.target.value.slice(0, 60))} placeholder="Full name" className="mt-1.5" />
+                {/* Patient details sub-card */}
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-mint/30 border-b border-border/40 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+                        <UserIcon className="w-3.5 h-3.5" />
+                      </span>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Patient Details</p>
+                    </div>
+                    {user?.id && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 text-[11px]"
+                        onClick={() => setCompanionPickerOpen(true)}
+                      >
+                        <BookmarkCheck className="w-3 h-3" /> Use saved
+                      </Button>
+                    )}
                   </div>
-                  <div>
-                    <Label htmlFor="other-phone">Phone number *</Label>
-                    <PhoneInput value={otherPhone} onChange={setOtherPhone} className="mt-1.5" />
-                  </div>
-                  <div>
-                    <Label htmlFor="other-rel">Relationship</Label>
-                    <Select value={otherRelationship} onValueChange={setOtherRelationship}>
-                      <SelectTrigger id="other-rel" className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        {['Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'].map(r => (
-                          <SelectItem key={r} value={r}>{r}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Label>Date of birth *</Label>
-                    <div className="grid grid-cols-3 gap-2 mt-1.5">
-                      <Select value={otherDob.month} onValueChange={(v) => setOtherDob(p => ({ ...p, month: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
-                        <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
-                      </Select>
-                      <Select value={otherDob.day} onValueChange={(v) => setOtherDob(p => ({ ...p, day: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                  <div className="p-4 grid sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="other-name">Patient name *</Label>
+                      <Input id="other-name" value={otherName} onChange={(e) => setOtherName(e.target.value.slice(0, 60))} placeholder="Full name" className="mt-1.5" />
+                    </div>
+                    <div>
+                      <Label htmlFor="other-phone">Phone number *</Label>
+                      <PhoneInput value={otherPhone} onChange={setOtherPhone} className="mt-1.5" />
+                    </div>
+                    <div>
+                      <Label htmlFor="other-rel">Relationship</Label>
+                      <Select value={otherRelationship} onValueChange={setOtherRelationship}>
+                        <SelectTrigger id="other-rel" className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
                         <SelectContent>
-                          {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
-                            <SelectItem key={d} value={d}>{Number(d)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select value={otherDob.year} onValueChange={(v) => setOtherDob(p => ({ ...p, year: v }))}>
-                        <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
-                            <SelectItem key={y} value={y}>{y}</SelectItem>
+                          {['Spouse', 'Child', 'Parent', 'Sibling', 'Relative', 'Friend', 'Other'].map(r => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                  <div>
-                    <Label>Gender *</Label>
-                    <Select value={otherGender} onValueChange={setOtherGender}>
-                      <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Male">Male</SelectItem>
-                        <SelectItem value="Female">Female</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="sm:col-span-2">
+                      <Label>Date of birth *</Label>
+                      <div className="grid grid-cols-3 gap-2 mt-1.5">
+                        <Select value={otherDob.month} onValueChange={(v) => setOtherDob(p => ({ ...p, month: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
+                          <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Select value={otherDob.day} onValueChange={(v) => setOtherDob(p => ({ ...p, day: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
+                              <SelectItem key={d} value={d}>{Number(d)}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={otherDob.year} onValueChange={(v) => setOtherDob(p => ({ ...p, year: v }))}>
+                          <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
+                              <SelectItem key={y} value={y}>{y}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Gender *</Label>
+                      <Select value={otherGender} onValueChange={setOtherGender}>
+                        <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-border/30 pt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Medical history *</p>
-                  <MedicalAssessmentForm value={otherMedical} onChange={setOtherMedical} />
+                {/* Medical sub-card */}
+                <div className="rounded-xl border border-border/50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-mint/30 border-b border-border/40">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+                      <Info className="w-3.5 h-3.5" />
+                    </span>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Medical history *</p>
+                  </div>
+                  <div className="p-4">
+                    <MedicalAssessmentForm value={otherMedical} onChange={setOtherMedical} />
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Birthday-style date picker */}
-            <div>
-              <Label>Preferred date *</Label>
-              <div className="grid grid-cols-3 gap-2 mt-1.5">
-                <Select value={dateParts.month} onValueChange={(v) => handleDatePart('month', v)}>
-                  <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
-                  <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={dateParts.day} onValueChange={(v) => handleDatePart('day', v)}>
-                  <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
-                  <SelectContent>{dayOptions.map(d => <SelectItem key={d} value={d}>{Number(d)}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={dateParts.year} onValueChange={(v) => handleDatePart('year', v)}>
-                  <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
-                  <SelectContent>{STANDBY_YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
-                </Select>
+            <div className="rounded-xl border border-border/50 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-mint/30 border-b border-border/40">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+                  <CalendarDays className="w-3.5 h-3.5" />
+                </span>
+                <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Preferred date *</p>
               </div>
-
-              {dateBanner && (
-                <div className={cn(
-                  'mt-3 rounded-lg border p-3 flex items-start gap-2 text-sm',
-                  dateBanner.tone === 'success' && 'border-emerald-200 bg-emerald-50/50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300',
-                  dateBanner.tone === 'warning' && 'border-amber-200 bg-amber-50/50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300',
-                  dateBanner.tone === 'destructive' && 'border-red-200 bg-red-50/50 text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300',
-                  dateBanner.tone === 'muted' && 'border-border bg-muted/40 text-muted-foreground',
-                )}>
-                  <dateBanner.icon className={cn('w-4 h-4 shrink-0 mt-0.5', dateBanner.tone === 'muted' && 'animate-spin')} />
-                  <div className="space-y-0.5">
-                    <p className="font-semibold leading-tight">{dateBanner.title}</p>
-                    {dateBanner.body && <p className="text-xs leading-snug">{dateBanner.body}</p>}
-                  </div>
+              <div className="p-4">
+                <div className="grid grid-cols-3 gap-2">
+                  <Select value={dateParts.month} onValueChange={(v) => handleDatePart('month', v)}>
+                    <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
+                    <SelectContent>{MONTHS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={dateParts.day} onValueChange={(v) => handleDatePart('day', v)}>
+                    <SelectTrigger><SelectValue placeholder="Day" /></SelectTrigger>
+                    <SelectContent>{dayOptions.map(d => <SelectItem key={d} value={d}>{Number(d)}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={dateParts.year} onValueChange={(v) => handleDatePart('year', v)}>
+                    <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                    <SelectContent>{STANDBY_YEARS.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
-              )}
 
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                <Clock className="w-3 h-3" /> You cannot choose a time — staff will assign one if a slot opens.
-              </p>
+                {dateBanner && (
+                  <div className={cn(
+                    'mt-3 rounded-lg border p-3 flex items-start gap-2 text-sm',
+                    dateBanner.tone === 'success' && 'border-emerald-200 bg-emerald-50/50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300',
+                    dateBanner.tone === 'warning' && 'border-amber-200 bg-amber-50/50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-300',
+                    dateBanner.tone === 'destructive' && 'border-red-200 bg-red-50/50 text-red-800 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300',
+                    dateBanner.tone === 'muted' && 'border-border bg-muted/40 text-muted-foreground',
+                  )}>
+                    <dateBanner.icon className={cn('w-4 h-4 shrink-0 mt-0.5', dateBanner.tone === 'muted' && 'animate-spin')} />
+                    <div className="space-y-0.5">
+                      <p className="font-semibold leading-tight">{dateBanner.title}</p>
+                      {dateBanner.body && <p className="text-xs leading-snug">{dateBanner.body}</p>}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> You cannot choose a time — staff will assign one if a slot opens.
+                </p>
+              </div>
             </div>
 
             <div>
@@ -555,7 +619,7 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
               />
             </div>
 
-            <Button type="submit" disabled={submitting || !dateUsable || !reason.trim()} className="gap-1.5">
+            <Button type="submit" disabled={submitting || !dateUsable || !reason.trim()} size="lg" className="gap-1.5 w-full sm:w-auto">
               {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : <><Clock className="w-4 h-4" /> Submit standby request</>}
             </Button>
           </form>
@@ -564,19 +628,30 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
 
       {/* My Requests */}
       <div ref={requestsRef}>
-        <h3 className="font-semibold text-foreground mb-3">My standby requests</h3>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 className="font-semibold text-foreground flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-mint text-secondary">
+              <Timer className="w-3.5 h-3.5" />
+            </span>
+            My standby requests
+          </h3>
+          {requests.length > 0 && (
+            <Badge variant="outline" className="text-[11px] tabular-nums">
+              {requests.length} total
+            </Badge>
+          )}
+        </div>
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : requests.length === 0 ? (
-          <Card className="border-border/50 border-dashed">
-            <CardContent className="py-10 text-center">
-              <Clock className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-              <p className="font-medium text-foreground">No standby requests yet</p>
-              <p className="text-sm text-muted-foreground mt-1">Submit a request above when your preferred date is fully booked.</p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={Clock}
+            title="No standby requests yet"
+            description="Submit a request above when your preferred date is fully booked."
+            tone="muted"
+          />
         ) : (
           <div className="space-y-3">
             {requests.map(req => {

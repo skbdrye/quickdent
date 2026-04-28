@@ -9,6 +9,8 @@ import { useAuthStore } from '@/lib/store';
 import { Image, Eye, CalendarDays, Clock, Users, User } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { ImageGallery } from '@/components/shared/ImageGallery';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface XrayRecord {
   id: number;
@@ -168,23 +170,28 @@ export default function XraysView({ highlightAppointmentId, highlightKey }: Xray
 
   return (
     <div className="space-y-6 w-full max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">My X-Rays</h1>
-        <p className="text-muted-foreground">View digital copies of your dental x-rays</p>
-      </div>
+      <PageHeader
+        icon={Image}
+        title="My X-Rays"
+        description="View digital copies of your dental x-rays"
+        actions={groups.length > 0 ? (
+          <Badge variant="outline" className="text-[11px] tabular-nums hidden sm:inline-flex">
+            {groups.length} visit{groups.length !== 1 ? 's' : ''}
+          </Badge>
+        ) : undefined}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : groups.length === 0 ? (
-        <Card className="border-border/50 border-dashed">
-          <CardContent className="py-16 text-center">
-            <Image className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="font-medium text-foreground">No x-rays yet</p>
-            <p className="text-sm text-muted-foreground mt-1">Your x-ray records will appear here after your dental visits</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Image}
+          title="No x-rays yet"
+          description="Your x-ray records will appear here after your dental visits."
+          tone="info"
+        />
       ) : (
         <div className="space-y-3">
           {groups.map((group, idx) => (
@@ -192,7 +199,7 @@ export default function XraysView({ highlightAppointmentId, highlightKey }: Xray
               key={group.appointment_id ?? `group-${idx}`}
               id={group.appointment_id ? `xr-group-${group.appointment_id}` : undefined}
               className={cn(
-                'border-border/50 overflow-hidden hover:shadow-sm transition-all duration-300',
+                'border-border/50 overflow-hidden hover:shadow-md hover:border-secondary/30 transition-all duration-300',
                 highlightingId === group.appointment_id && 'ring-2 ring-secondary ring-offset-2 shadow-md',
               )}
             >

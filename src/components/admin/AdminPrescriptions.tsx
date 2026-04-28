@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { FileText, Pencil, Search } from 'lucide-react';
 import { RecordImageGallery } from '@/components/shared/RecordImageGallery';
 import { RecordImageEditor } from '@/components/shared/RecordImageEditor';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface PrescriptionRow {
   id: number;
@@ -106,10 +108,16 @@ export default function AdminPrescriptions({ highlightAppointmentId, highlightKe
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">All Prescriptions</h1>
-        <p className="text-muted-foreground">View and manage all patient prescriptions</p>
-      </div>
+      <PageHeader
+        icon={FileText}
+        title="All Prescriptions"
+        description="View and manage every prescription written by the clinic."
+        actions={prescriptions.length > 0 ? (
+          <Badge variant="outline" className="text-[11px] tabular-nums hidden sm:inline-flex">
+            {prescriptions.length} total
+          </Badge>
+        ) : undefined}
+      />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -117,23 +125,21 @@ export default function AdminPrescriptions({ highlightAppointmentId, highlightKe
           placeholder="Search by patient name or doctor..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
+          className="pl-10 h-10"
         />
       </div>
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading prescriptions...</div>
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              {searchQuery ? 'No prescriptions match your search' : 'No prescriptions found'}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={FileText}
+          title={searchQuery ? 'No prescriptions match your search' : 'No prescriptions found'}
+          description={searchQuery ? 'Try a different keyword.' : 'New prescriptions will appear here as soon as they are added.'}
+          tone="muted"
+        />
       ) : (
-        <Card>
+        <Card className="border-border/50 overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>

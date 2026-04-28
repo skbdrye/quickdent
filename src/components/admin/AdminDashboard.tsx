@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, CalendarCheck, Clock, TrendingUp, ArrowRight } from 'lucide-react';
+import { Users, CalendarCheck, Clock, TrendingUp, ArrowRight, LayoutDashboard, CalendarDays } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatTime } from '@/lib/utils';
 import type { AdminPage } from '@/lib/types';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface StatsData {
   totalPatients: number;
@@ -25,9 +27,12 @@ interface RecentAppointment {
 
 interface AdminDashboardProps {
   onNavigate?: (page: AdminPage) => void;
+  /** Optional escape hatch so a click on a recent-appointment row can both
+   *  navigate AND highlight that specific appointment in the AppointmentManagement table. */
+  onNavigateToAppointment?: (appointmentId?: number | null) => void;
 }
 
-export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
+export default function AdminDashboard({ onNavigate, onNavigateToAppointment }: AdminDashboardProps) {
   const [stats, setStats] = useState<StatsData>({ totalPatients: 0, todayAppointments: 0, pendingAppointments: 0, completedToday: 0 });
   const [recentAppointments, setRecentAppointments] = useState<RecentAppointment[]>([]);
 
@@ -120,81 +125,105 @@ export default function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   }
 
-  const handleAppointmentClick = () => {
-    if (onNavigate) {
+  const handleAppointmentClick = (appointmentId?: number) => {
+    if (onNavigateToAppointment) {
+      onNavigateToAppointment(appointmentId ?? null);
+    } else if (onNavigate) {
       onNavigate('appointments');
     }
   };
 
+  const todayFormatted = useMemo(() => new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  }), []);
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">Welcome back, Admin</p>
-      </div>
+      <PageHeader
+        icon={LayoutDashboard}
+        eyebrow={todayFormatted}
+        title="Welcome back, Admin"
+        description="Here's a snapshot of clinic activity in real time."
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((stat) => (
-          <Card key={stat.title} className={`border-border/50 ring-1 ${stat.ring} overflow-hidden`}>
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${stat.bg}`}>
-                <stat.icon className={`h-6 w-6 ${stat.color}`} />
+          <Card key={stat.title} className="border-border/50 overflow-hidden relative group hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+            <div aria-hidden className={`pointer-events-none absolute -right-6 -top-6 w-20 h-20 rounded-full ${stat.bg} blur-2xl opacity-70 group-hover:opacity-100 transition-opacity`} />
+            <CardContent className="p-4 flex items-center gap-3 relative">
+              <div className={`p-2.5 rounded-xl ${stat.bg} ring-1 ${stat.ring} shrink-0`}>
+                <stat.icon className={`h-5 w-5 ${stat.color}`} />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{stat.title}</p>
-                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+              <div className="min-w-0">
+                <p className="text-[11px] sm:text-xs text-muted-foreground uppercase tracking-wider font-medium truncate">{stat.title}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-foreground tabular-nums leading-tight">{stat.value}</p>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
+      <Card className="border-border/50 overflow-hidden">
+        <CardHeader className="pb-3 bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Recent Appointments</CardTitle>
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-card text-secondary ring-1 ring-secondary/15">
+                <CalendarDays className="w-4 h-4" />
+              </span>
+              Recent Appointments
+            </CardTitle>
             <button
-              onClick={handleAppointmentClick}
-              className="text-xs text-secondary hover:text-secondary/80 flex items-center gap-1 transition-colors"
+              onClick={() => handleAppointmentClick()}
+              className="text-xs text-secondary hover:text-secondary/80 inline-flex items-center gap-1 font-semibold transition-all hover:translate-x-0.5"
             >
               View all <ArrowRight className="w-3 h-3" />
             </button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {recentAppointments.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No appointments yet</p>
+            <EmptyState
+              icon={CalendarCheck}
+              title="No appointments yet"
+              description="As soon as a patient books, you'll see it here."
+              tone="muted"
+            />
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {recentAppointments.map((apt) => (
                 <div
                   key={apt.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-muted/40 cursor-pointer hover:bg-muted/70 border border-border/30 transition-all group"
-                  onClick={handleAppointmentClick}
+                  className="flex items-center justify-between p-3 rounded-xl bg-card cursor-pointer hover:bg-mint/30 border border-border/40 hover:border-secondary/30 transition-all duration-200 group"
+                  onClick={() => handleAppointmentClick(apt.id)}
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-foreground truncate text-sm">
-                        {apt.is_group_booking && apt.group_member_names
-                          ? apt.group_member_names.join(', ')
-                          : apt.patient_name}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-xl shrink-0 ring-1 ${apt.is_group_booking ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 ring-blue-200 dark:ring-blue-800' : 'bg-mint text-secondary ring-secondary/15'}`}>
+                      {apt.is_group_booking ? <Users className="w-4 h-4" /> : <CalendarCheck className="w-4 h-4" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-foreground truncate text-sm">
+                          {apt.is_group_booking && apt.group_member_names
+                            ? apt.group_member_names.join(', ')
+                            : apt.patient_name}
+                        </p>
+                        {apt.is_group_booking && (
+                          <Badge variant="outline" className="text-[10px] shrink-0 gap-0.5">
+                            <Users className="w-3 h-3" />
+                            {apt.group_member_names && apt.group_member_names.length === 1 ? 'Companion' : 'Group'}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+                        {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} &middot; {formatTime(apt.appointment_time)}
                       </p>
-                      {apt.is_group_booking && (
-                        <Badge variant="outline" className="text-[10px] shrink-0 gap-0.5">
-                          <Users className="w-3 h-3" />
-                          {apt.group_member_names && apt.group_member_names.length === 1 ? 'Companion' : 'Group'}
-                        </Badge>
-                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} at {formatTime(apt.appointment_time)}
-                    </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <Badge variant={getStatusVariant(apt.status) as "pending" | "confirmed" | "completed" | "cancelled" | "noshow"}>
                       {apt.status}
                     </Badge>
-                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-secondary group-hover:translate-x-0.5 transition-all" />
                   </div>
                 </div>
               ))}

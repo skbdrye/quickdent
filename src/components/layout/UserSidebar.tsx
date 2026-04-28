@@ -49,16 +49,23 @@ export function UserSidebar({ activePage, onNavigate }: UserSidebarProps) {
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40 px-3 mb-2">Main</p>
-          {userNavItems.map(({ page, icon: Icon, label }) => (
-            <button key={page} onClick={() => onNavigate(page)} className={cn(
-              'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-              activePage === page
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-            )}>
-              <Icon className="w-4 h-4" /> {label}
-            </button>
-          ))}
+          {userNavItems.map(({ page, icon: Icon, label }) => {
+            const active = activePage === page;
+            return (
+              <button key={page} onClick={() => onNavigate(page)} className={cn(
+                'group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+                active
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground hover:translate-x-0.5'
+              )}>
+                {active && (
+                  <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-sidebar-primary rounded-r-full" />
+                )}
+                <Icon className={cn('w-4 h-4 shrink-0 transition-transform', active && 'scale-110')} />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <div className="p-3 border-t border-sidebar-border">

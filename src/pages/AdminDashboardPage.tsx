@@ -105,7 +105,7 @@ export default function AdminDashboardPage() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'dashboard': return <AdminDashboard onNavigate={setActivePage} />;
+      case 'dashboard': return <AdminDashboard onNavigate={setActivePage} onNavigateToAppointment={handleNavigateToAppointment} />;
       case 'appointments': return <Suspense fallback={<PageLoader />}><AppointmentManagement highlightAppointmentId={highlightAppointmentId} highlightKey={highlightKey} /></Suspense>;
       case 'patients': return <Suspense fallback={<PageLoader />}><PatientList /></Suspense>;
       case 'schedule': return <Suspense fallback={<PageLoader />}><ClinicSchedule /></Suspense>;
@@ -113,7 +113,7 @@ export default function AdminDashboardPage() {
       case 'prescriptions': return <Suspense fallback={<PageLoader />}><AdminPrescriptions highlightAppointmentId={prescriptionHighlightId} highlightKey={prescriptionHighlightKey} /></Suspense>;
       case 'xrays': return <Suspense fallback={<PageLoader />}><AdminXrays highlightAppointmentId={xrayHighlightId} highlightKey={xrayHighlightKey} /></Suspense>;
       case 'standby-queue': return <Suspense fallback={<PageLoader />}><AdminStandbyQueue highlightId={standbyHighlightId} highlightKey={standbyHighlightKey} /></Suspense>;
-      default: return <AdminDashboard onNavigate={setActivePage} />;
+      default: return <AdminDashboard onNavigate={setActivePage} onNavigateToAppointment={handleNavigateToAppointment} />;
     }
   };
 

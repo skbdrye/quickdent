@@ -99,12 +99,18 @@ export const MedicalAssessmentForm = React.memo(function MedicalAssessmentForm({
       {showFooter && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
           <div>
-            <Label className="text-xs">Last dental checkup</Label>
+            <Label className="text-xs flex items-center gap-1.5">
+              Last dental checkup
+              <span className="text-[10px] font-normal text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">Optional</span>
+            </Label>
             <Input className="h-9 mt-1" placeholder="e.g. 2024-08" value={value.med_last_checkup} onChange={e => set('med_last_checkup', e.target.value)} />
           </div>
           <div>
-            <Label className="text-xs">Other medical info</Label>
-            <Input className="h-9 mt-1" placeholder="Optional" value={value.med_other} onChange={e => set('med_other', e.target.value)} />
+            <Label className="text-xs flex items-center gap-1.5">
+              Other medical info
+              <span className="text-[10px] font-normal text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">Optional</span>
+            </Label>
+            <Input className="h-9 mt-1" placeholder="Anything else we should know" value={value.med_other} onChange={e => set('med_other', e.target.value)} />
           </div>
         </div>
       )}

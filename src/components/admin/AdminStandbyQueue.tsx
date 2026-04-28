@@ -10,9 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useStandbyStore, useClinicStore, useAppointmentsStore } from '@/lib/store';
 import { notificationsAPI, scheduleOverridesAPI, getEffectiveDay, generateDaySlots } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import { Clock, Search, Filter, CalendarDays, User, CheckCircle2, XCircle, Timer, Loader2 } from 'lucide-react';
+import { Clock, Search, CalendarDays, User, CheckCircle2, XCircle, Timer, Loader2 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import type { ScheduleOverride } from '@/lib/types';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 interface AdminStandbyQueueProps {
   highlightId?: number | null;
@@ -88,6 +90,14 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
       });
   }, [requests, statusFilter, searchQuery]);
 
+  const statusCounts = useMemo(() => {
+    const acc: Record<string, number> = { all: requests.length, Waiting: 0, Confirmed: 0, Expired: 0, Cancelled: 0 };
+    for (const r of requests) {
+      if (r.status in acc) acc[r.status] += 1;
+    }
+    return acc;
+  }, [requests]);
+
   const handleConfirm = async () => {
     if (!assignDialog || !assignTime) {
       toast({ title: 'Missing Time', description: 'Please assign a time slot.', variant: 'destructive' });
@@ -141,15 +151,6 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
     setSaving(false);
   };
 
-  const handleExpire = async (id: number) => {
-    try {
-      await updateStatus(id, 'Expired');
-      toast({ title: 'Expired', description: 'Request marked as expired.' });
-    } catch {
-      toast({ title: 'Error', description: 'Failed to update.', variant: 'destructive' });
-    }
-  };
-
   const statusBadge = (status: string) => {
     switch (status) {
       case 'Waiting': return 'pending' as const;
@@ -161,29 +162,46 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Standby Queue</h1>
-        <p className="text-muted-foreground">Manage walk-in and standby patient requests</p>
-      </div>
+      <PageHeader
+        icon={Timer}
+        title="Standby Queue"
+        description="Manage walk-in and standby patient requests."
+      />
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="space-y-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search by patient or reason..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          <Input placeholder="Search by patient or reason..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 h-10" />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Waiting">Waiting</SelectItem>
-              <SelectItem value="Confirmed">Confirmed</SelectItem>
-              <SelectItem value="Expired">Expired</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+          {([
+            { v: 'all', label: 'All' },
+            { v: 'Waiting', label: 'Waiting' },
+            { v: 'Confirmed', label: 'Confirmed' },
+            { v: 'Expired', label: 'Expired' },
+            { v: 'Cancelled', label: 'Cancelled' },
+          ]).map(opt => {
+            const active = statusFilter === opt.v;
+            const count = statusCounts[opt.v] ?? 0;
+            return (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => setStatusFilter(opt.v)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 shrink-0',
+                  active ? 'bg-secondary text-secondary-foreground shadow-sm' : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {opt.label}
+                <span className={cn(
+                  'inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                  active ? 'bg-secondary-foreground/20 text-secondary-foreground' : 'bg-card text-muted-foreground',
+                )}>{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -192,15 +210,12 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
           <div className="w-8 h-8 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <Card className="border-border/50 border-dashed">
-          <CardContent className="py-12 text-center">
-            <Clock className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
-            <p className="font-medium text-foreground">No standby requests</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              {statusFilter !== 'all' ? 'Try changing the filter' : 'Patients will appear here when they request standby slots'}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Clock}
+          title="No standby requests"
+          description={statusFilter !== 'all' ? 'Try changing the filter' : 'Patients will appear here when they request standby slots.'}
+          tone="muted"
+        />
       ) : (
         <div className="space-y-3">
           {filtered.map(req => (
@@ -208,14 +223,14 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
               key={req.id}
               data-admin-standby-id={req.id}
               className={cn(
-                'border-border/50 transition-all duration-300',
+                'border-border/50 transition-all duration-300 hover:shadow-md hover:border-secondary/30',
                 highlighting === req.id && 'ring-2 ring-secondary ring-offset-2 shadow-md',
               )}
             >
               <CardContent className="p-4">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-mint flex items-center justify-center shrink-0 ring-1 ring-secondary/15">
                       <User className="w-5 h-5 text-secondary" />
                     </div>
                     <div className="min-w-0">
@@ -227,7 +242,7 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
                           {new Date(req.preferred_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                         {req.assigned_time && (
-                          <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                             <Clock className="w-3 h-3" />
                             Assigned: {formatTime(req.assigned_time)}
                           </span>
@@ -249,7 +264,7 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 text-xs gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                          className="h-8 text-xs gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300 dark:text-emerald-400 dark:border-emerald-800 dark:hover:bg-emerald-950/30"
                           onClick={() => setAssignDialog({ id: req.id, userId: req.user_id, name: req.patient_name, date: req.preferred_date })}
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" /> Assign
@@ -257,7 +272,7 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                          className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-950/30"
                           onClick={() => setDenyDialog({ id: req.id, userId: req.user_id, name: req.patient_name })}
                         >
                           <XCircle className="w-3.5 h-3.5" /> Deny
