@@ -37,7 +37,7 @@ export const smsTemplates = {
     `Hi ${name}, your appointment at ${CLINIC_NAME} has been RESCHEDULED to ${fmtDate(newDate)} at ${formatTime(newTime)}. See you then!`,
 
   rescheduledByClinic: (name: string, newDate: string, newTime: string) =>
-    `Hi ${name}, the clinic has RESCHEDULED your appointment at ${CLINIC_NAME} to ${fmtDate(newDate)} at ${formatTime(newTime)}. Please confirm by showing up on time.`,
+    `Hi ${name}, the clinic has RESCHEDULED your appointment at ${CLINIC_NAME} to ${fmtDate(newDate)} at ${formatTime(newTime)}. Please show up on time. If you can't make it, please cancel your appointment to free it up for others.`,
 
   completed: (name: string, date: string) =>
     `Hi ${name}, thank you for visiting ${CLINIC_NAME} on ${fmtDate(date)}. We hope to see you again for your next check-up!`,
@@ -57,7 +57,7 @@ export const smsTemplates = {
     `Hi ${name}, you've been added to the STANDBY queue at ${CLINIC_NAME} for ${fmtDate(date)}. We'll text you the moment a slot opens.`,
 
   standbyAssigned: (name: string, date: string, time: string) =>
-    `Hi ${name}, a standby slot opened at ${CLINIC_NAME} on ${fmtDate(date)} at ${formatTime(time)}. Please confirm by showing up on time.`,
+    `Hi ${name}, your standby request at ${CLINIC_NAME} on ${fmtDate(date)} at ${formatTime(time)}. Please show up on time. If you can't make it, please cancel your standby slot to free it up for others.`,
 
   standbyCancelled: (name: string, date: string) =>
     `Hi ${name}, your standby request at ${CLINIC_NAME} for ${fmtDate(date)} has been cancelled.`,
