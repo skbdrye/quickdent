@@ -2,60 +2,89 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp';
-import { ShieldCheck, RotateCcw, Loader2 } from 'lucide-react';
+import { ShieldCheck, RotateCcw, Loader2, MessageSquareText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { smsAPI, type OtpPurpose } from '@/lib/sms';
+
+import type React from 'react';
 
 interface OtpVerificationProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   phone: string;
   onVerified: () => void;
+  /** Differentiates the OTP record so a registration code cannot be used to reset a password. */
+  purpose?: OtpPurpose;
+  /** Optional override title shown in the dialog header. */
+  title?: string;
+  /** Optional override description above the input. */
+  description?: React.ReactNode;
 }
 
 const OTP_LENGTH = 6;
-const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVerificationProps) {
+export function OtpVerification({
+  open,
+  onOpenChange,
+  phone,
+  onVerified,
+  purpose = 'registration',
+  title = 'Verify Your Phone',
+  description,
+}: OtpVerificationProps) {
   const { toast } = useToast();
   const [otp, setOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [canResend, setCanResend] = useState(false);
+  const [hasSent, setHasSent] = useState(false);
   const expiryRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const sendOtp = useCallback(() => {
-    const code = generateOTP();
-    setGeneratedOtp(code);
+  const sendOtp = useCallback(async () => {
+    setIsSending(true);
     setOtp('');
-    expiryRef.current = Date.now() + OTP_EXPIRY_MS;
-    setTimeLeft(300); // 5 minutes in seconds
     setCanResend(false);
-
-    // Since Semaphore API is not yet purchased, the OTP is shown inside
-    // the verification dialog itself. No toast notification.
-  }, []);
+    const res = await smsAPI.sendOtp(phone, purpose);
+    setIsSending(false);
+    if (!res.ok) {
+      toast({
+        title: 'Could not send code',
+        description: res.error || 'Please try again in a moment.',
+        variant: 'destructive',
+      });
+      setCanResend(true);
+      return;
+    }
+    setHasSent(true);
+    expiryRef.current = res.expiresAt
+      ? new Date(res.expiresAt).getTime()
+      : Date.now() + 5 * 60 * 1000;
+    const secs = Math.max(1, Math.floor((expiryRef.current - Date.now()) / 1000));
+    setTimeLeft(secs);
+    toast({
+      title: 'Verification code sent',
+      description: 'Check your text messages for the 6-digit code.',
+    });
+  }, [phone, purpose, toast]);
 
   useEffect(() => {
     if (open) {
-      sendOtp();
+      void sendOtp();
     } else {
       setOtp('');
-      setGeneratedOtp('');
+      setHasSent(false);
       setTimeLeft(0);
       if (timerRef.current) clearInterval(timerRef.current);
     }
-  }, [open, sendOtp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (timeLeft <= 0) {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (open && generatedOtp) setCanResend(true);
+      if (open && hasSent) setCanResend(true);
       return;
     }
 
@@ -72,38 +101,31 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [timeLeft, open, generatedOtp]);
+  }, [timeLeft, open, hasSent]);
 
   const handleVerify = async () => {
     if (otp.length !== OTP_LENGTH) {
       toast({ title: 'Incomplete Code', description: 'Please enter the full 6-digit code.', variant: 'destructive' });
       return;
     }
-
-    if (Date.now() > expiryRef.current) {
-      toast({ title: 'Code Expired', description: 'Your OTP has expired. Please request a new one.', variant: 'destructive' });
-      setCanResend(true);
+    setIsVerifying(true);
+    const res = await smsAPI.verifyOtp(phone, otp, purpose);
+    setIsVerifying(false);
+    if (!res.ok) {
+      toast({
+        title: 'Invalid Code',
+        description: res.error || 'The code you entered is incorrect or has expired.',
+        variant: 'destructive',
+      });
+      setOtp('');
       return;
     }
-
-    setIsVerifying(true);
-
-    // Simulate brief verification delay
-    await new Promise(r => setTimeout(r, 600));
-
-    if (otp === generatedOtp) {
-      setIsVerifying(false);
-      onVerified();
-      onOpenChange(false);
-    } else {
-      setIsVerifying(false);
-      toast({ title: 'Invalid Code', description: 'The code you entered is incorrect. Please try again.', variant: 'destructive' });
-      setOtp('');
-    }
+    onVerified();
+    onOpenChange(false);
   };
 
   const handleResend = () => {
-    sendOtp();
+    void sendOtp();
   };
 
   const formatTimeLeft = (seconds: number) => {
@@ -113,27 +135,34 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
   };
 
   const maskedPhone = phone.length > 4
-    ? phone.slice(0, -4).replace(/./g, '*') + phone.slice(-4)
+    ? phone.slice(0, -4).replace(/\d/g, '*') + phone.slice(-4)
     : phone;
+
+  const desc = description || (
+    <>We sent a 6-digit verification code to <strong className="text-foreground">{maskedPhone}</strong></>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="text-center items-center">
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center mb-2">
+          <div className="mx-auto w-14 h-14 rounded-2xl flex items-center justify-center mb-2 ring-1 ring-secondary/20"
+               style={{ background: 'var(--gradient-mint)' }}>
             <ShieldCheck className="w-7 h-7 text-secondary" />
           </div>
-          <DialogTitle className="text-xl">Verify Your Phone</DialogTitle>
+          <DialogTitle className="text-xl">{title}</DialogTitle>
           <DialogDescription className="text-center">
-            We sent a 6-digit verification code to <strong className="text-foreground">{maskedPhone}</strong>
+            {desc}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-6 py-4">
-          {/* OTP Display (temporary - remove when Semaphore is active) */}
-          <div className="w-full px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-center">
-            <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">Demo Mode - Your OTP code:</p>
-            <p className="text-2xl font-bold tracking-[0.3em] text-amber-800 dark:text-amber-300 font-mono">{generatedOtp}</p>
+          {/* Helper hint */}
+          <div className="w-full px-4 py-2.5 rounded-xl bg-mint/40 border border-secondary/15 flex items-center gap-2.5">
+            <MessageSquareText className="w-4 h-4 text-secondary shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              The code arrives via SMS from <span className="font-medium text-foreground">QUICKDENT</span>. It is valid for 5 minutes.
+            </p>
           </div>
 
           {/* OTP Input */}
@@ -143,6 +172,7 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
               value={otp}
               onChange={setOtp}
               onComplete={handleVerify}
+              disabled={isSending}
             >
               <InputOTPGroup>
                 <InputOTPSlot index={0} />
@@ -158,7 +188,11 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
             </InputOTP>
 
             {/* Timer */}
-            {timeLeft > 0 ? (
+            {isSending ? (
+              <p className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending code…
+              </p>
+            ) : timeLeft > 0 ? (
               <p className="text-sm text-muted-foreground">
                 Code expires in <span className="font-medium text-foreground">{formatTimeLeft(timeLeft)}</span>
               </p>
@@ -171,7 +205,7 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
           <div className="w-full space-y-3">
             <Button
               onClick={handleVerify}
-              disabled={isVerifying || otp.length !== OTP_LENGTH}
+              disabled={isVerifying || isSending || otp.length !== OTP_LENGTH}
               className="w-full gap-2"
             >
               {isVerifying ? (
@@ -182,7 +216,7 @@ export function OtpVerification({ open, onOpenChange, phone, onVerified }: OtpVe
             </Button>
 
             <div className="text-center">
-              {canResend ? (
+              {canResend && !isSending ? (
                 <button
                   type="button"
                   onClick={handleResend}

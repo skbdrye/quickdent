@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useStandbyStore, useClinicStore, useAppointmentsStore } from '@/lib/store';
 import { notificationsAPI, scheduleOverridesAPI, getEffectiveDay, generateDaySlots } from '@/lib/api';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { Clock, Search, CalendarDays, User, CheckCircle2, XCircle, Timer, Loader2 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
@@ -119,6 +121,16 @@ export default function AdminStandbyQueue({ highlightId, highlightKey }: AdminSt
         type: 'standby',
         related_id: assignDialog.id,
       });
+
+      // SMS the patient via Semaphore
+      const fullReq = requests.find(r => r.id === assignDialog.id);
+      const phone = fullReq?.contact || '';
+      if (phone) {
+        void smsAPI.sendNotification(
+          phone,
+          smsTemplates.standbyAssigned(assignDialog.name, assignDialog.date, assignTime),
+        );
+      }
 
       toast({ title: 'Confirmed', description: `Slot assigned to ${assignDialog.name} at ${formatTime(assignTime)}.` });
       setAssignDialog(null);

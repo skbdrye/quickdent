@@ -7,6 +7,8 @@ import {
   groupMembersAPI, notificationsAPI, companionsAPI, scheduleOverridesAPI, appointmentsAPI,
   SlotTakenError, BookingCooldownError, TooManyActiveBookingsError, getEffectiveDay, getDayCapacity,
 } from '@/lib/api';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import { useToast } from '@/hooks/use-toast';
 import {
   Users, Plus, AlertCircle, BookmarkCheck, UsersRound, CheckCircle2, CalendarDays, ArrowRight,
@@ -365,6 +367,27 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         'new_booking',
         apt?.id
       );
+
+      // Notify the booker themselves (if they have a phone) and every
+      // member who has a number on file. The relative SMS calls out the
+      // booker's name so it's not mistaken for spam.
+      const bookerName = profile?.first_name && profile?.last_name
+        ? `${profile.first_name} ${profile.last_name}`
+        : (user.username || 'Your relative');
+      if (profile?.phone || user.phone) {
+        void smsAPI.sendNotification(
+          profile?.phone || user.phone,
+          smsTemplates.booked(bookerName, selectedDate, members[0]?.appointment_time || '', members[0]?.services?.[0] || null),
+        );
+      }
+      members.forEach(m => {
+        if (m.phone && m.relationship !== 'Self') {
+          void smsAPI.sendNotification(
+            m.phone,
+            smsTemplates.bookedForOther(m.member_name, bookerName, selectedDate, m.appointment_time),
+          );
+        }
+      });
       const bookedCount = members.length;
       const bookedDate = selectedDate;
       setMembers([emptyMember()]);

@@ -13,6 +13,8 @@ import { Search, Upload, Image as ImageIcon, Loader2, Download, X, ChevronDown, 
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { appointmentsAPI, notificationsAPI, servicesAPI, xraysAPI, groupMembersAPI } from '@/lib/api';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import { useClinicStore } from '@/lib/store';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
@@ -233,6 +235,33 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
         type: status === 'Confirmed' ? 'reminder' : status === 'No Show' ? 'no_show_warning' : 'status_change',
         related_appointment_id: id,
       });
+      // Send a matching SMS through Semaphore (fire-and-forget)
+      const phone = apt.contact || '';
+      if (phone) {
+        let msg: string | null = null;
+        if (status === 'Confirmed') msg = smsTemplates.confirmed(apt.patient_name, apt.appointment_date, apt.appointment_time);
+        else if (status === 'Completed') msg = smsTemplates.completed(apt.patient_name, apt.appointment_date);
+        else if (status === 'No Show') msg = smsTemplates.noShow(apt.patient_name, apt.appointment_date);
+        if (msg) void smsAPI.sendNotification(phone, msg);
+
+        // For group bookings, also message every member with their own phone.
+        if (apt.is_group_booking && status === 'Confirmed') {
+          try {
+            const { data: gms } = await supabase
+              .from('group_members')
+              .select('member_name, phone, appointment_time')
+              .eq('appointment_id', id);
+            for (const m of (gms || []) as { member_name: string; phone: string | null; appointment_time: string }[]) {
+              if (m.phone) {
+                void smsAPI.sendNotification(
+                  m.phone,
+                  smsTemplates.confirmed(m.member_name, apt.appointment_date, m.appointment_time || apt.appointment_time),
+                );
+              }
+            }
+          } catch { /* non-fatal */ }
+        }
+      }
     }
 
     toast({ title: 'Status Updated', description: `Appointment marked as ${status}` });
@@ -253,6 +282,12 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
           type: 'reschedule',
           related_appointment_id: rescheduleId,
         });
+        if (apt.contact) {
+          void smsAPI.sendNotification(
+            apt.contact,
+            smsTemplates.rescheduledByClinic(apt.patient_name, newDate, newTime),
+          );
+        }
       }
       toast({ title: 'Rescheduled', description: `Appointment moved to ${newDate} at ${formatTime(newTime)}.` });
       setSuccessModal({ open: true, title: 'Appointment Rescheduled', description: `Appointment has been moved to ${newDate} at ${formatTime(newTime)}.` });
@@ -1301,6 +1336,12 @@ export default function AppointmentManagement({ highlightAppointmentId, highligh
                     type: 'cancellation',
                     related_appointment_id: adminCancelId,
                   });
+                  if (apt.contact) {
+                    void smsAPI.sendNotification(
+                      apt.contact,
+                      smsTemplates.cancelledByClinic(apt.patient_name, apt.appointment_date, apt.appointment_time, adminCancelReason.trim()),
+                    );
+                  }
                 }
                 setAdminCancelId(null);
                 setAdminCancelReason('');

@@ -14,6 +14,7 @@ import { LogIn, UserPlus, Eye, EyeOff, Check, X } from 'lucide-react';
 import { COUNTRY_CODES } from '@/lib/countries';
 import { Link } from 'react-router-dom';
 import { OtpVerification } from './OtpVerification';
+import { ForgotPasswordDialog } from './ForgotPasswordDialog';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 
 interface LoginDialogProps {
@@ -63,6 +64,7 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [, startTransition] = useTransition();
   const [showOtp, setShowOtp] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
   const [pendingRegData, setPendingRegData] = useState<{ username: string; phone: string; countryCode: string; password: string } | null>(null);
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
   // Persist the just-registered username independently so that even if
@@ -171,7 +173,6 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
     }
 
     // Show OTP verification before completing registration
-    const fullPhone = `${regCountryCode}${cleanPhone}`;
     setPendingRegData({ username: regUsername, phone: cleanPhone, countryCode: regCountryCode, password: regPassword });
     setShowOtp(true);
   };
@@ -287,15 +288,24 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="rememberMe"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked === true)}
-                />
-                <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer select-none">
-                  Remember me
-                </label>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="rememberMe"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                  />
+                  <label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer select-none">
+                    Remember me
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(true)}
+                  className="text-sm text-secondary font-medium hover:underline"
+                >
+                  Forgot password?
+                </button>
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Logging in...' : 'Login'}
@@ -402,7 +412,18 @@ export function LoginDialog({ open, onOpenChange }: LoginDialogProps) {
         open={showOtp}
         onOpenChange={(open) => { setShowOtp(open); if (!open) setPendingRegData(null); }}
         phone={pendingRegData ? `${pendingRegData.countryCode}${pendingRegData.phone}` : ''}
+        purpose="registration"
         onVerified={handleOtpVerified}
+      />
+
+      {/* Forgot Password */}
+      <ForgotPasswordDialog
+        open={showForgot}
+        onOpenChange={setShowForgot}
+        onResetComplete={(ident) => {
+          setTab('login');
+          setLoginPhone(ident);
+        }}
       />
 
       {/* Registration Success Modal */}

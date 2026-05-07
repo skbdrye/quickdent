@@ -328,6 +328,8 @@ export default function UserSettings() {
         open={showPhoneOtp}
         onOpenChange={(open) => { setShowPhoneOtp(open); if (!open) setPendingPhone(''); }}
         phone={pendingPhone}
+        purpose="phone_change"
+        title="Verify your new number"
         onVerified={completePhoneUpdate}
       />
 

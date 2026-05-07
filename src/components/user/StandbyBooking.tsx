@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthStore, useStandbyStore, useProfileStore, useAppointmentsStore, useClinicStore } from '@/lib/store';
 import { notificationsAPI, companionsAPI, scheduleOverridesAPI, getEffectiveDay, BookingCooldownError, TooManyActiveBookingsError } from '@/lib/api';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { SuccessModal } from '@/components/shared/SuccessModal';
 import { PhoneInput, isValidPHPhone } from '@/components/shared/PhoneInput';
@@ -302,6 +304,17 @@ export default function StandbyBooking({ highlightId, highlightKey }: StandbyBoo
         `${patientName} requested a standby slot for ${selectedDate}.\n\nReason: ${reasonFinal}`,
         'standby',
       );
+
+      // Confirm to the patient via SMS
+      const standbyContact = mode === 'self'
+        ? (profile?.phone || user.phone)
+        : (otherPhone || profile?.phone || user.phone);
+      if (standbyContact) {
+        void smsAPI.sendNotification(
+          standbyContact,
+          smsTemplates.standbyAdded(patientName, selectedDate),
+        );
+      }
 
       setSuccessModal({
         open: true,

@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore, useAppointmentsStore } from '@/lib/store';
 import { notificationsAPI, groupMembersAPI } from '@/lib/api';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import type { GroupMember } from '@/lib/types';
 import { statusVariant } from '@/lib/types';
 import { RescheduleDialog } from '@/components/shared/RescheduleDialog';
@@ -143,6 +145,11 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
           'cancellation',
           cancelId
         );
+        // SMS the patient confirming the cancellation
+        void smsAPI.sendNotification(
+          apt.contact || user?.phone || '',
+          smsTemplates.cancelled(apt.patient_name, apt.appointment_date, apt.appointment_time),
+        );
       }
       setSuccessModal({
         open: true,
@@ -166,6 +173,13 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
         'reschedule',
         rescheduleId
       );
+      const apt = appointments.find(a => a.id === rescheduleId);
+      if (apt) {
+        void smsAPI.sendNotification(
+          apt.contact || user?.phone || '',
+          smsTemplates.rescheduled(apt.patient_name, newDate, newTime),
+        );
+      }
       setSuccessModal({
         open: true,
         title: 'Appointment Rescheduled',

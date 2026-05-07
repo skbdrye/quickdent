@@ -180,17 +180,20 @@ export function PatientProfile({ onNavigate }: PatientProfileProps) {
     }
     setIsSaving(true);
     try {
-      await updateAssessment(user.id, { ...localAssessment, is_submitted: true });
+      // Single combined upsert: write the full assessment payload with
+      // is_submitted/consent in one trip. Avoids a race where the optional
+      // fields' empty strings would mismatch the server's NULLs and cause
+      // a false "Failed to submit assessment" error on resubmit.
+      await updateAssessment(user.id, { ...localAssessment, is_submitted: true, consent: true });
       await submitAssessment(user.id);
-      // Update the initial snapshot so "Update Assessment" becomes disabled again until new changes
       initialAssessmentRef.current = JSON.stringify(localAssessment);
       toast({ title: 'Assessment saved', description: 'Your medical assessment has been updated successfully.' });
-      // Navigate back to dashboard after successful submission
       if (onNavigate) {
         onNavigate('dashboard');
       }
-    } catch {
-      toast({ title: 'Error', description: 'Failed to submit assessment', variant: 'destructive' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit assessment';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     }
     setIsSaving(false);
   };

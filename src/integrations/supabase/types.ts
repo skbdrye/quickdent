@@ -1,3 +1,7 @@
+// Supabase database types — hand-written to match the user's actual
+// QuickDent schema on https://silekfssubwfhsxakobw.supabase.co.
+// Re-generate with `supabase gen types typescript --project-id silekfssubwfhsxakobw`
+// after schema changes.
 export type Json =
   | string
   | number
@@ -7,209 +11,114 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
-  }
   public: {
     Tables: {
-      appointments: {
+      users: {
         Row: {
-          appointment_date: string
-          appointment_time: string
-          cancelled_at: string | null
-          contact: string | null
+          id: string
+          username: string
+          phone: string
+          password_hash: string
+          country_code: string
+          role: string
           created_at: string | null
-          duration_min: number | null
-          id: number
-          is_group_booking: boolean | null
-          notes: string | null
-          original_date: string | null
-          original_time: string | null
-          patient_name: string
-          reschedule_count: number | null
-          rescheduled_at: string | null
-          service: string | null
-          status: string | null
-          user_id: string
-        }
-        Insert: {
-          appointment_date: string
-          appointment_time: string
-          cancelled_at?: string | null
-          contact?: string | null
-          created_at?: string | null
-          duration_min?: number | null
-          id?: never
-          is_group_booking?: boolean | null
-          notes?: string | null
-          original_date?: string | null
-          original_time?: string | null
-          patient_name: string
-          reschedule_count?: number | null
-          rescheduled_at?: string | null
-          service?: string | null
-          status?: string | null
-          user_id: string
-        }
-        Update: {
-          appointment_date?: string
-          appointment_time?: string
-          cancelled_at?: string | null
-          contact?: string | null
-          created_at?: string | null
-          duration_min?: number | null
-          id?: never
-          is_group_booking?: boolean | null
-          notes?: string | null
-          original_date?: string | null
-          original_time?: string | null
-          patient_name?: string
-          reschedule_count?: number | null
-          rescheduled_at?: string | null
-          service?: string | null
-          status?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "appointments_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      clinic_settings: {
-        Row: {
-          id: number
-          setting_key: string
-          setting_value: Json
           updated_at: string | null
+          no_show_count: number | null
+          is_banned: boolean | null
+          banned_at: string | null
+          ban_reason: string | null
+          onboarding_completed: boolean | null
+          first_login_at: string | null
         }
         Insert: {
-          id?: never
-          setting_key: string
-          setting_value: Json
+          id?: string
+          username: string
+          phone: string
+          password_hash: string
+          country_code?: string
+          role?: string
+          created_at?: string | null
           updated_at?: string | null
+          no_show_count?: number | null
+          is_banned?: boolean | null
+          banned_at?: string | null
+          ban_reason?: string | null
+          onboarding_completed?: boolean | null
+          first_login_at?: string | null
         }
         Update: {
-          id?: never
-          setting_key?: string
-          setting_value?: Json
+          id?: string
+          username?: string
+          phone?: string
+          password_hash?: string
+          country_code?: string
+          role?: string
+          created_at?: string | null
           updated_at?: string | null
+          no_show_count?: number | null
+          is_banned?: boolean | null
+          banned_at?: string | null
+          ban_reason?: string | null
+          onboarding_completed?: boolean | null
+          first_login_at?: string | null
         }
         Relationships: []
       }
-      group_members: {
+      patient_profiles: {
         Row: {
-          appointment_id: number
-          appointment_time: string
-          created_at: string | null
+          id: number
+          user_id: string
+          first_name: string | null
+          last_name: string | null
+          middle_name: string | null
           date_of_birth: string | null
           gender: string | null
-          id: number
-          is_primary: boolean | null
-          linked_user_id: string | null
-          med_consent: boolean | null
-          med_last_checkup: string | null
-          med_other: string | null
-          med_q1: string | null
-          med_q2: string | null
-          med_q2_details: string | null
-          med_q3: string | null
-          med_q3_details: string | null
-          med_q4: string | null
-          med_q4_details: string | null
-          med_q5: string | null
-          med_q5_details: string | null
-          med_q6: string | null
-          member_name: string
           phone: string | null
-          relationship: string | null
-          services: string[] | null
+          address: string | null
+          is_complete: boolean | null
+          created_at: string | null
+          updated_at: string | null
+          patient_kind: string | null
+          patient_type: string | null
         }
         Insert: {
-          appointment_id: number
-          appointment_time: string
-          created_at?: string | null
+          id?: number
+          user_id: string
+          first_name?: string | null
+          last_name?: string | null
+          middle_name?: string | null
           date_of_birth?: string | null
           gender?: string | null
-          id?: never
-          is_primary?: boolean | null
-          linked_user_id?: string | null
-          med_consent?: boolean | null
-          med_last_checkup?: string | null
-          med_other?: string | null
-          med_q1?: string | null
-          med_q2?: string | null
-          med_q2_details?: string | null
-          med_q3?: string | null
-          med_q3_details?: string | null
-          med_q4?: string | null
-          med_q4_details?: string | null
-          med_q5?: string | null
-          med_q5_details?: string | null
-          med_q6?: string | null
-          member_name: string
           phone?: string | null
-          relationship?: string | null
-          services?: string[] | null
+          address?: string | null
+          is_complete?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+          patient_kind?: string | null
+          patient_type?: string | null
         }
         Update: {
-          appointment_id?: number
-          appointment_time?: string
-          created_at?: string | null
+          id?: number
+          user_id?: string
+          first_name?: string | null
+          last_name?: string | null
+          middle_name?: string | null
           date_of_birth?: string | null
           gender?: string | null
-          id?: never
-          is_primary?: boolean | null
-          linked_user_id?: string | null
-          med_consent?: boolean | null
-          med_last_checkup?: string | null
-          med_other?: string | null
-          med_q1?: string | null
-          med_q2?: string | null
-          med_q2_details?: string | null
-          med_q3?: string | null
-          med_q3_details?: string | null
-          med_q4?: string | null
-          med_q4_details?: string | null
-          med_q5?: string | null
-          med_q5_details?: string | null
-          med_q6?: string | null
-          member_name?: string
           phone?: string | null
-          relationship?: string | null
-          services?: string[] | null
+          address?: string | null
+          is_complete?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+          patient_kind?: string | null
+          patient_type?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "group_members_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "group_members_linked_user_id_fkey"
-            columns: ["linked_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       medical_assessments: {
         Row: {
-          consent: boolean | null
-          created_at: string | null
           id: number
-          is_submitted: boolean | null
-          last_checkup: string | null
-          other_medical: string | null
+          user_id: string
           q1: string | null
           q2: string | null
           q2_details: string | null
@@ -220,16 +129,16 @@ export type Database = {
           q5: string | null
           q5_details: string | null
           q6: string | null
+          last_checkup: string | null
+          other_medical: string | null
+          consent: boolean | null
+          is_submitted: boolean | null
+          created_at: string | null
           updated_at: string | null
-          user_id: string
         }
         Insert: {
-          consent?: boolean | null
-          created_at?: string | null
-          id?: never
-          is_submitted?: boolean | null
-          last_checkup?: string | null
-          other_medical?: string | null
+          id?: number
+          user_id: string
           q1?: string | null
           q2?: string | null
           q2_details?: string | null
@@ -240,16 +149,16 @@ export type Database = {
           q5?: string | null
           q5_details?: string | null
           q6?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          consent?: boolean | null
-          created_at?: string | null
-          id?: never
-          is_submitted?: boolean | null
           last_checkup?: string | null
           other_medical?: string | null
+          consent?: boolean | null
+          is_submitted?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          user_id?: string
           q1?: string | null
           q2?: string | null
           q2_details?: string | null
@@ -260,319 +169,602 @@ export type Database = {
           q5?: string | null
           q5_details?: string | null
           q6?: string | null
+          last_checkup?: string | null
+          other_medical?: string | null
+          consent?: boolean | null
+          is_submitted?: boolean | null
+          created_at?: string | null
           updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "medical_assessments_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notifications: {
-        Row: {
-          created_at: string | null
-          id: number
-          is_read: boolean | null
-          message: string
-          related_appointment_id: number | null
-          title: string
-          type: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: never
-          is_read?: boolean | null
-          message: string
-          related_appointment_id?: number | null
-          title: string
-          type?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: never
-          is_read?: boolean | null
-          message?: string
-          related_appointment_id?: number | null
-          title?: string
-          type?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_related_appointment_id_fkey"
-            columns: ["related_appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      patient_profiles: {
-        Row: {
-          address: string | null
-          created_at: string | null
-          date_of_birth: string | null
-          first_name: string | null
-          gender: string | null
-          id: number
-          is_complete: boolean | null
-          last_name: string | null
-          middle_name: string | null
-          patient_type: string | null
-          phone: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          address?: string | null
-          created_at?: string | null
-          date_of_birth?: string | null
-          first_name?: string | null
-          gender?: string | null
-          id?: never
-          is_complete?: boolean | null
-          last_name?: string | null
-          middle_name?: string | null
-          patient_type?: string | null
-          phone?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          address?: string | null
-          created_at?: string | null
-          date_of_birth?: string | null
-          first_name?: string | null
-          gender?: string | null
-          id?: never
-          is_complete?: boolean | null
-          last_name?: string | null
-          middle_name?: string | null
-          patient_type?: string | null
-          phone?: string | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "patient_profiles_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      prescriptions: {
-        Row: {
-          appointment_id: number | null
-          created_at: string | null
-          diagnosis: string | null
-          group_member_id: number | null
-          id: number
-          image_url: string | null
-          instructions: string | null
-          medications: string
-          prescribed_by: string
-          prescription_date: string
-          user_id: string
-        }
-        Insert: {
-          appointment_id?: number | null
-          created_at?: string | null
-          diagnosis?: string | null
-          group_member_id?: number | null
-          id?: never
-          image_url?: string | null
-          instructions?: string | null
-          medications: string
-          prescribed_by: string
-          prescription_date?: string
-          user_id: string
-        }
-        Update: {
-          appointment_id?: number | null
-          created_at?: string | null
-          diagnosis?: string | null
-          group_member_id?: number | null
-          id?: never
-          image_url?: string | null
-          instructions?: string | null
-          medications?: string
-          prescribed_by?: string
-          prescription_date?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prescriptions_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prescriptions_group_member_id_fkey"
-            columns: ["group_member_id"]
-            isOneToOne: false
-            referencedRelation: "group_members"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prescriptions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      services: {
-        Row: {
-          available_days: string[] | null
-          created_at: string | null
-          id: number
-          is_active: boolean | null
-          name: string
-          sort_order: number | null
-        }
-        Insert: {
-          available_days?: string[] | null
-          created_at?: string | null
-          id?: never
-          is_active?: boolean | null
-          name: string
-          sort_order?: number | null
-        }
-        Update: {
-          available_days?: string[] | null
-          created_at?: string | null
-          id?: never
-          is_active?: boolean | null
-          name?: string
-          sort_order?: number | null
         }
         Relationships: []
       }
-      users: {
+      appointments: {
         Row: {
-          ban_reason: string | null
-          banned_at: string | null
-          country_code: string
+          id: number
+          user_id: string
+          patient_name: string
+          appointment_date: string
+          appointment_time: string
+          duration_min: number | null
+          notes: string | null
+          status: string | null
+          contact: string | null
+          is_group_booking: boolean | null
           created_at: string | null
-          id: string
-          is_banned: boolean | null
-          no_show_count: number | null
-          onboarding_completed: boolean | null
-          password_hash: string
-          phone: string
-          role: string
-          updated_at: string | null
-          username: string
+          cancelled_at: string | null
+          reschedule_count: number | null
+          rescheduled_at: string | null
+          original_date: string | null
+          original_time: string | null
+          service: string | null
         }
         Insert: {
-          ban_reason?: string | null
-          banned_at?: string | null
-          country_code?: string
+          id?: number
+          user_id: string
+          patient_name: string
+          appointment_date: string
+          appointment_time: string
+          duration_min?: number | null
+          notes?: string | null
+          status?: string | null
+          contact?: string | null
+          is_group_booking?: boolean | null
           created_at?: string | null
-          id?: string
-          is_banned?: boolean | null
-          no_show_count?: number | null
-          onboarding_completed?: boolean | null
-          password_hash: string
-          phone: string
-          role?: string
-          updated_at?: string | null
-          username: string
+          cancelled_at?: string | null
+          reschedule_count?: number | null
+          rescheduled_at?: string | null
+          original_date?: string | null
+          original_time?: string | null
+          service?: string | null
         }
         Update: {
-          ban_reason?: string | null
-          banned_at?: string | null
-          country_code?: string
+          id?: number
+          user_id?: string
+          patient_name?: string
+          appointment_date?: string
+          appointment_time?: string
+          duration_min?: number | null
+          notes?: string | null
+          status?: string | null
+          contact?: string | null
+          is_group_booking?: boolean | null
           created_at?: string | null
-          id?: string
-          is_banned?: boolean | null
-          no_show_count?: number | null
-          onboarding_completed?: boolean | null
-          password_hash?: string
-          phone?: string
-          role?: string
-          updated_at?: string | null
-          username?: string
+          cancelled_at?: string | null
+          reschedule_count?: number | null
+          rescheduled_at?: string | null
+          original_date?: string | null
+          original_time?: string | null
+          service?: string | null
+        }
+        Relationships: []
+      }
+      group_members: {
+        Row: {
+          id: number
+          appointment_id: number
+          member_name: string
+          date_of_birth: string | null
+          relationship: string | null
+          services: string[] | null
+          appointment_time: string
+          phone: string | null
+          med_q1: string | null
+          med_q2: string | null
+          med_q2_details: string | null
+          med_q3: string | null
+          med_q3_details: string | null
+          med_q4: string | null
+          med_q4_details: string | null
+          med_q5: string | null
+          med_q5_details: string | null
+          med_q6: string | null
+          med_last_checkup: string | null
+          med_other: string | null
+          med_consent: boolean | null
+          is_primary: boolean | null
+          created_at: string | null
+          linked_user_id: string | null
+          gender: string | null
+        }
+        Insert: {
+          id?: number
+          appointment_id: number
+          member_name: string
+          date_of_birth?: string | null
+          relationship?: string | null
+          services?: string[] | null
+          appointment_time: string
+          phone?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          is_primary?: boolean | null
+          created_at?: string | null
+          linked_user_id?: string | null
+          gender?: string | null
+        }
+        Update: {
+          id?: number
+          appointment_id?: number
+          member_name?: string
+          date_of_birth?: string | null
+          relationship?: string | null
+          services?: string[] | null
+          appointment_time?: string
+          phone?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          is_primary?: boolean | null
+          created_at?: string | null
+          linked_user_id?: string | null
+          gender?: string | null
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          id: number
+          user_id: string
+          title: string
+          message: string
+          type: string
+          is_read: boolean | null
+          related_appointment_id: number | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          title: string
+          message: string
+          type?: string
+          is_read?: boolean | null
+          related_appointment_id?: number | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          title?: string
+          message?: string
+          type?: string
+          is_read?: boolean | null
+          related_appointment_id?: number | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      services: {
+        Row: {
+          id: number
+          name: string
+          is_active: boolean | null
+          sort_order: number | null
+          created_at: string | null
+          available_days: string[]
+        }
+        Insert: {
+          id?: number
+          name: string
+          is_active?: boolean | null
+          sort_order?: number | null
+          created_at?: string | null
+          available_days?: string[]
+        }
+        Update: {
+          id?: number
+          name?: string
+          is_active?: boolean | null
+          sort_order?: number | null
+          created_at?: string | null
+          available_days?: string[]
+        }
+        Relationships: []
+      }
+      service_day_availability: {
+        Row: {
+          service_id: number
+          weekday: number
+          is_available: boolean
+        }
+        Insert: {
+          service_id: number
+          weekday: number
+          is_available?: boolean
+        }
+        Update: {
+          service_id?: number
+          weekday?: number
+          is_available?: boolean
+        }
+        Relationships: []
+      }
+      day_capacity: {
+        Row: {
+          weekday: number
+          doctor_count: number
+          slot_capacity: number
+          day_max_bookings: number | null
+        }
+        Insert: {
+          weekday: number
+          doctor_count?: number
+          slot_capacity?: number
+          day_max_bookings?: number | null
+        }
+        Update: {
+          weekday?: number
+          doctor_count?: number
+          slot_capacity?: number
+          day_max_bookings?: number | null
+        }
+        Relationships: []
+      }
+      prescriptions: {
+        Row: {
+          id: number
+          appointment_id: number | null
+          user_id: string
+          prescribed_by: string
+          prescription_date: string
+          medications: string
+          diagnosis: string | null
+          instructions: string | null
+          created_at: string | null
+          group_member_id: number | null
+          image_url: string | null
+          images: string[] | null
+        }
+        Insert: {
+          id?: number
+          appointment_id?: number | null
+          user_id: string
+          prescribed_by: string
+          prescription_date?: string
+          medications: string
+          diagnosis?: string | null
+          instructions?: string | null
+          created_at?: string | null
+          group_member_id?: number | null
+          image_url?: string | null
+          images?: string[] | null
+        }
+        Update: {
+          id?: number
+          appointment_id?: number | null
+          user_id?: string
+          prescribed_by?: string
+          prescription_date?: string
+          medications?: string
+          diagnosis?: string | null
+          instructions?: string | null
+          created_at?: string | null
+          group_member_id?: number | null
+          image_url?: string | null
+          images?: string[] | null
         }
         Relationships: []
       }
       xrays: {
         Row: {
-          appointment_id: number | null
-          created_at: string | null
-          group_member_id: number | null
           id: number
-          image_url: string | null
-          notes: string | null
-          uploaded_by: string
           user_id: string
+          appointment_id: number | null
+          group_member_id: number | null
+          uploaded_by: string
+          image_url: string
+          notes: string | null
           xray_date: string
+          created_at: string | null
+          images: string[] | null
         }
         Insert: {
-          appointment_id?: number | null
-          created_at?: string | null
-          group_member_id?: number | null
-          id?: never
-          image_url?: string | null
-          notes?: string | null
-          uploaded_by: string
+          id?: number
           user_id: string
+          appointment_id?: number | null
+          group_member_id?: number | null
+          uploaded_by?: string
+          image_url: string
+          notes?: string | null
           xray_date?: string
+          created_at?: string | null
+          images?: string[] | null
         }
         Update: {
-          appointment_id?: number | null
-          created_at?: string | null
-          group_member_id?: number | null
-          id?: never
-          image_url?: string | null
-          notes?: string | null
-          uploaded_by?: string
+          id?: number
           user_id?: string
+          appointment_id?: number | null
+          group_member_id?: number | null
+          uploaded_by?: string
+          image_url?: string
+          notes?: string | null
           xray_date?: string
+          created_at?: string | null
+          images?: string[] | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "xrays_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "xrays_appointment_id_fkey"
-            columns: ["appointment_id"]
-            isOneToOne: false
-            referencedRelation: "appointments"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "xrays_group_member_id_fkey"
-            columns: ["group_member_id"]
-            isOneToOne: false
-            referencedRelation: "group_members"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      standby_requests: {
+        Row: {
+          id: number
+          user_id: string
+          patient_name: string
+          contact: string | null
+          preferred_date: string
+          reason: string
+          status: string
+          assigned_time: string | null
+          admin_notes: string | null
+          created_at: string | null
+          date_of_birth: string | null
+          med_q1: string | null
+          med_q2: string | null
+          med_q2_details: string | null
+          med_q3: string | null
+          med_q3_details: string | null
+          med_q4: string | null
+          med_q4_details: string | null
+          med_q5: string | null
+          med_q5_details: string | null
+          med_q6: string | null
+          med_last_checkup: string | null
+          med_other: string | null
+          med_consent: boolean | null
+          saved_companion_id: number | null
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          patient_name: string
+          contact?: string | null
+          preferred_date: string
+          reason: string
+          status?: string
+          assigned_time?: string | null
+          admin_notes?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          saved_companion_id?: number | null
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          patient_name?: string
+          contact?: string | null
+          preferred_date?: string
+          reason?: string
+          status?: string
+          assigned_time?: string | null
+          admin_notes?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          saved_companion_id?: number | null
+        }
+        Relationships: []
+      }
+      saved_companions: {
+        Row: {
+          id: number
+          owner_id: string
+          member_name: string
+          date_of_birth: string | null
+          gender: string | null
+          phone: string | null
+          relationship: string | null
+          med_q1: string | null
+          med_q2: string | null
+          med_q2_details: string | null
+          med_q3: string | null
+          med_q3_details: string | null
+          med_q4: string | null
+          med_q4_details: string | null
+          med_q5: string | null
+          med_q5_details: string | null
+          med_q6: string | null
+          med_last_checkup: string | null
+          med_other: string | null
+          med_consent: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          owner_id: string
+          member_name: string
+          date_of_birth?: string | null
+          gender?: string | null
+          phone?: string | null
+          relationship?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          owner_id?: string
+          member_name?: string
+          date_of_birth?: string | null
+          gender?: string | null
+          phone?: string | null
+          relationship?: string | null
+          med_q1?: string | null
+          med_q2?: string | null
+          med_q2_details?: string | null
+          med_q3?: string | null
+          med_q3_details?: string | null
+          med_q4?: string | null
+          med_q4_details?: string | null
+          med_q5?: string | null
+          med_q5_details?: string | null
+          med_q6?: string | null
+          med_last_checkup?: string | null
+          med_other?: string | null
+          med_consent?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      schedule_overrides: {
+        Row: {
+          override_date: string
+          is_open: boolean
+          open_time: string | null
+          close_time: string | null
+          break_start: string | null
+          break_end: string | null
+          reason: string | null
+          created_at: string | null
+          doctor_count: number | null
+          slot_capacity: number | null
+          day_max_bookings: number | null
+          doctors_count: number | null
+          max_per_slot: number | null
+          max_daily: number | null
+        }
+        Insert: {
+          override_date: string
+          is_open?: boolean
+          open_time?: string | null
+          close_time?: string | null
+          break_start?: string | null
+          break_end?: string | null
+          reason?: string | null
+          created_at?: string | null
+          doctor_count?: number | null
+          slot_capacity?: number | null
+          day_max_bookings?: number | null
+          doctors_count?: number | null
+          max_per_slot?: number | null
+          max_daily?: number | null
+        }
+        Update: {
+          override_date?: string
+          is_open?: boolean
+          open_time?: string | null
+          close_time?: string | null
+          break_start?: string | null
+          break_end?: string | null
+          reason?: string | null
+          created_at?: string | null
+          doctor_count?: number | null
+          slot_capacity?: number | null
+          day_max_bookings?: number | null
+          doctors_count?: number | null
+          max_per_slot?: number | null
+          max_daily?: number | null
+        }
+        Relationships: []
+      }
+      clinic_settings: {
+        Row: {
+          id: number
+          setting_key: string
+          setting_value: Json
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          setting_key: string
+          setting_value: Json
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          setting_key?: string
+          setting_value?: Json
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      otp_codes: {
+        Row: {
+          id: number
+          phone: string
+          purpose: string
+          code_hash: string
+          expires_at: string
+          consumed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          phone: string
+          purpose?: string
+          code_hash: string
+          expires_at: string
+          consumed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          phone?: string
+          purpose?: string
+          code_hash?: string
+          expires_at?: string
+          consumed_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -590,25 +782,21 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -626,16 +814,14 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -651,16 +837,14 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+    | { schema: keyof Database },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
+    schema: keyof Database
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -671,40 +855,6 @@ export type TablesUpdate<
       }
       ? U
       : never
-    : never
-
-export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof DatabaseWithoutInternals
-  }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals
-}
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {

@@ -14,6 +14,8 @@ import { SuccessModal } from '@/components/shared/SuccessModal';
 import { DateTimePicker } from '@/components/shared/DateTimePicker';
 import { ServicePickerCard } from '@/components/shared/ServicePicker';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { smsAPI } from '@/lib/sms';
+import { smsTemplates } from '@/lib/smsTemplates';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -115,6 +117,11 @@ export function AppointmentBooking({ onNavigate }: { onNavigate?: (page: Dashboa
         `${patientName} booked an appointment for ${selectedService} on ${selectedDate} at ${formatTime(selectedTime)}.`,
         'new_booking',
         newApt?.id
+      );
+      // Send patient SMS confirmation (fire-and-forget)
+      void smsAPI.sendNotification(
+        profile?.phone || user.phone,
+        smsTemplates.booked(patientName, selectedDate, selectedTime, selectedService),
       );
       const bookedDate = selectedDate;
       const bookedTime = selectedTime;

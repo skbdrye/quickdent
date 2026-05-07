@@ -204,6 +204,66 @@ export const authAPI = {
       return { success: false, message: msg };
     }
   },
+
+  /**
+   * Forgot-password helper: resolve the patient's account by either username
+   * or phone (in any of the three formats: 09…, +639…, 9…) and return the
+   * E.164 phone we should text the OTP to.
+   */
+  async findUserForReset(identifier: string): Promise<
+    | { success: true; phone: string; username: string; message: string }
+    | { success: false; message: string }
+  > {
+    try {
+      const trimmed = identifier.trim();
+      let user: { id: string; phone: string; username: string } | null = null;
+      const normalized = normalizePhoneForLogin(trimmed);
+      if (normalized.startsWith('+') || trimmed.startsWith('0')) {
+        const { data } = await supabase
+          .from('users')
+          .select('id, phone, username')
+          .eq('phone', normalized)
+          .maybeSingle();
+        user = data as typeof user;
+      } else {
+        const { data } = await supabase
+          .from('users')
+          .select('id, phone, username')
+          .eq('username', trimmed)
+          .maybeSingle();
+        user = data as typeof user;
+      }
+      if (!user || !user.phone) {
+        return { success: false, message: 'No account found with that username or mobile number.' };
+      }
+      return { success: true, phone: user.phone, username: user.username, message: 'User found' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Lookup failed';
+      return { success: false, message: msg };
+    }
+  },
+
+  /**
+   * Persist the new password for the user matching the given phone.
+   * Caller MUST have completed an OTP challenge first.
+   */
+  async resetPasswordByPhone(phone: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const hashed = await bcryptjs.hash(newPassword, 10);
+      const { data, error } = await supabase
+        .from('users')
+        .update({ password_hash: hashed } as never)
+        .eq('phone', phone)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return { success: false, message: 'Account not found.' };
+      return { success: true, message: 'Password updated.' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not update password';
+      return { success: false, message: msg };
+    }
+  },
 };
 
 // ========== PROFILE API ==========
@@ -284,6 +344,19 @@ export const assessmentAPI = {
   },
 
   async upsert(assessment: Partial<MedicalAssessment> & { user_id: string }) {
+    // Optional fields can legitimately be empty. Coerce '' to null so that
+    // the optional `last_checkup` and `other_medical` columns (and the
+    // qN_details fields) are stored cleanly and don't cause type coercion
+    // errors against typed columns. Without this, an empty `last_checkup`
+    // sometimes triggers "invalid input syntax for type date" failures
+    // which surfaced to the user as "Failed to submit assessment".
+    const norm = (v: unknown) => (v === '' || v === undefined ? null : v);
+    const cleaned: Record<string, unknown> = { ...assessment };
+    [
+      'q2_details', 'q3_details', 'q4_details', 'q5_details',
+      'last_checkup', 'other_medical',
+    ].forEach((k) => { cleaned[k] = norm(cleaned[k]); });
+
     const { data: existing } = await supabase
       .from('medical_assessments')
       .select('id')
@@ -291,17 +364,17 @@ export const assessmentAPI = {
       .maybeSingle();
 
     if (existing) {
-      const { id, ...assessmentData } = assessment;
+      delete cleaned.id;
       const { error } = await supabase
         .from('medical_assessments')
-        .update({ ...assessmentData, updated_at: new Date().toISOString() })
+        .update({ ...cleaned, updated_at: new Date().toISOString() })
         .eq('user_id', assessment.user_id);
       if (error) throw error;
     } else {
-      const { id, ...assessmentData } = assessment;
+      delete cleaned.id;
       const { error } = await supabase
         .from('medical_assessments')
-        .insert([assessmentData]);
+        .insert([cleaned as never]);
       if (error) throw error;
     }
   },

@@ -24,9 +24,11 @@ export default defineConfig(({ mode }) => {
     base: '/',
     build: {
       outDir: 'dist',
-      chunkSizeWarningLimit: 800,
+      chunkSizeWarningLimit: 500,
       cssCodeSplit: true,
       sourcemap: false,
+      target: 'es2020',
+      minify: 'esbuild',
       rollupOptions: {
         output: {
           // Split vendor bundles to keep the main entry small. We deliberately
@@ -71,6 +73,16 @@ export default defineConfig(({ mode }) => {
             ) {
               return 'ui-extras';
             }
+            // Crypto / OTP-specific deps used only by auth flows.
+            if (norm.includes('/bcryptjs/') || norm.includes('/input-otp/')) {
+              return 'auth-crypto';
+            }
+            // Animation library — used in a handful of dialogs only.
+            if (norm.includes('/framer-motion/') || norm.includes('/motion-')) {
+              return 'motion';
+            }
+            // Sonner / toast helpers — leaf of UI tree.
+            if (norm.includes('/sonner/')) return 'ui-toast';
 
             // Everything else: let Rollup co-locate with its importer.
             return undefined;
