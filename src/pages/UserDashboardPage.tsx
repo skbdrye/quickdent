@@ -143,7 +143,7 @@ export default function UserDashboardPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <UserSidebar activePage={activePage} onNavigate={setActivePage} />
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
         <DashboardHeader
           title={pageTitle()}
           onNavigateToAppointment={handleNavigateToAppointment}
@@ -151,7 +151,7 @@ export default function UserDashboardPage() {
           onNavigateToXrays={handleNavigateToXrays}
           onNavigateToStandby={handleNavigateToStandby}
         />
-        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-auto">
+        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6 overflow-x-hidden overflow-y-auto">
           {renderPage()}
         </main>
       </div>

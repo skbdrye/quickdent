@@ -228,7 +228,7 @@ export function DateTimePicker({
                   disabled={disabled}
                   onClick={() => onDateChange(info.date)}
                   className={cn(
-                    'relative rounded-lg p-2 pb-4 text-sm font-medium transition-all duration-150 flex flex-col items-center justify-start min-h-[3.25rem]',
+                    'relative rounded-lg p-1 sm:p-2 pb-4 text-xs sm:text-sm font-medium transition-all duration-150 flex flex-col items-center justify-start min-h-[3rem] sm:min-h-[3.25rem]',
                     disabled && 'cursor-not-allowed text-muted-foreground/30',
                     !disabled && !info.isSelected && !fullyBooked && 'hover:bg-mint hover:scale-[1.04] text-foreground',
                     !disabled && !info.isSelected && fullyBooked && 'hover:bg-amber-500/10 text-foreground',

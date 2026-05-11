@@ -1,20 +1,7 @@
 {
-  "$schema": "./components.schema.json",
-  "style": "default",
-  "rsc": false,
-  "tsx": true,
-  "tailwind": {
-    "config": "tailwind.config.ts",
-    "css": "src/index.css",
-    "baseColor": "slate",
-    "cssVariables": true,
-    "prefix": ""
-  },
-  "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
-  }
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "shadcn components config (local stub)",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": true
 }

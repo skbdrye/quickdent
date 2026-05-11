@@ -216,6 +216,19 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
     });
   }, [selectedDate, members]);
 
+  // Stable callbacks so children memoized with React.memo don't re-render
+  // every keystroke / state change of unrelated parts of this page.
+  const handleDateChange = useCallback((d: string | null) => {
+    setSelectedDate(d);
+    setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
+    setExpandedMember(0);
+    setTimeout(() => membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  }, []);
+  const noopTime = useCallback(() => {}, []);
+  const handleIncludeSelfChange = useCallback((c: boolean | 'indeterminate') => {
+    setIncludeSelf(c === true);
+  }, []);
+
   /** Open the 24h confirm dialog if needed; otherwise book straight away. */
   const requestBook = () => {
     if (!allReady || !selectedDate || isSubmitting) return;
@@ -456,15 +469,16 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto min-w-0">
       <PageHeader
         icon={UsersRound}
         title="Book for Others"
         description="Book for family, friends, or include yourself. Pick a service for each member."
       />
 
-      {/* Flow strip — guides patients through Date -> Members -> Review */}
-      <ol className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground overflow-x-auto pb-1">
+      {/* Flow strip — guides patients through Date -> Members -> Review.
+          Wraps on mobile so it never causes horizontal scroll. */}
+      <ol className="flex items-center gap-2 text-xs sm:text-sm font-medium text-muted-foreground flex-wrap sm:flex-nowrap sm:overflow-x-auto pb-1 no-scrollbar">
         <FlowChip step={1} active={flowStep === 1} done={!!selectedDate} label="Pick date" icon={CalendarDays} />
         <ArrowRight className="w-3.5 h-3.5 opacity-40 shrink-0" />
         <FlowChip step={2} active={flowStep === 2} done={allReady && members.length > 0} label={`Members (${readyCount}/${members.length})`} icon={Users} />
@@ -478,13 +492,8 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         overrides={overrides}
         selectedDate={selectedDate}
         selectedTime={null}
-        onDateChange={(d) => {
-          setSelectedDate(d);
-          setMembers(prev => prev.map(m => ({ ...m, appointment_time: '' })));
-          setExpandedMember(0);
-          setTimeout(() => membersCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-        }}
-        onTimeChange={() => {}}
+        onDateChange={handleDateChange}
+        onTimeChange={noopTime}
         hideTimeSlots
       />
 
@@ -494,7 +503,7 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
         includeSelf && 'border-secondary/50 ring-1 ring-secondary/20 shadow-sm',
       )}>
         <label className="flex items-center gap-4 p-4 cursor-pointer">
-          <Checkbox checked={includeSelf} onCheckedChange={(c) => setIncludeSelf(c === true)} className="h-5 w-5" />
+          <Checkbox checked={includeSelf} onCheckedChange={handleIncludeSelfChange} className="h-5 w-5" />
           <span className={cn(
             'inline-flex items-center justify-center w-11 h-11 rounded-xl shrink-0 ring-1 transition-colors',
             includeSelf ? 'bg-secondary text-secondary-foreground ring-secondary/30' : 'bg-mint text-secondary ring-secondary/15',
@@ -520,17 +529,17 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
       {/* Members */}
       <Card className="border-border/60 overflow-hidden" ref={membersCardRef}>
         <CardHeader className="pb-3 bg-gradient-to-br from-mint/40 to-transparent border-b border-border/40">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-base sm:text-lg flex items-center gap-2.5">
-              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-card text-secondary ring-1 ring-secondary/15">
+          <div className="flex items-center justify-between flex-wrap gap-2 min-w-0">
+            <CardTitle className="text-base sm:text-lg flex items-center gap-2.5 min-w-0">
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-card text-secondary ring-1 ring-secondary/15 shrink-0">
                 <Users className="w-4 h-4" />
               </span>
-              <span>
+              <span className="truncate">
                 Members
                 <span className="text-xs font-normal text-muted-foreground ml-2">({members.length}/5)</span>
               </span>
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {user?.id && (
                 <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => setCompanionPickerFor(expandedMember >= 0 ? expandedMember : 0)}>
                   <BookmarkCheck className="w-3.5 h-3.5" /> Saved
@@ -584,26 +593,28 @@ export function GroupBooking({ onNavigate }: { onNavigate?: (page: DashboardPage
           'shadow-lg backdrop-blur bg-background/95 transition-colors',
           allReady ? 'border-emerald-300/50 ring-1 ring-emerald-300/30' : 'border-secondary/30 ring-1 ring-secondary/10',
         )}>
-          <CardContent className="py-3 px-4 flex flex-wrap items-center gap-3">
-            <span className={cn(
-              'inline-flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ring-1 transition-colors',
-              allReady ? 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800' : 'bg-mint text-secondary ring-secondary/15',
-            )}>
-              {allReady ? <CheckCircle2 className="w-5 h-5" /> : <Users className="w-5 h-5" />}
-            </span>
-            <div className="flex-1 min-w-0 text-sm">
-              <p className="font-semibold text-foreground truncate">
-                {readyCount}/{members.length} member{members.length !== 1 ? 's' : ''} ready
-              </p>
-              {selectedDate ? (
-                <p className="text-xs text-muted-foreground truncate">
-                  {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+          <CardContent className="py-3 px-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className={cn(
+                'inline-flex items-center justify-center w-10 h-10 rounded-xl shrink-0 ring-1 transition-colors',
+                allReady ? 'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:ring-emerald-800' : 'bg-mint text-secondary ring-secondary/15',
+              )}>
+                {allReady ? <CheckCircle2 className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+              </span>
+              <div className="flex-1 min-w-0 text-sm">
+                <p className="font-semibold text-foreground truncate">
+                  {readyCount}/{members.length} member{members.length !== 1 ? 's' : ''} ready
                 </p>
-              ) : (
-                <p className="text-xs text-amber-600 dark:text-amber-400">Pick a date first</p>
-              )}
+                {selectedDate ? (
+                  <p className="text-xs text-muted-foreground truncate">
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">Pick a date first</p>
+                )}
+              </div>
             </div>
-            <Button onClick={requestBook} size="lg" disabled={isSubmitting || !allReady || !selectedDate} className="shrink-0 gap-1.5">
+            <Button onClick={requestBook} size="lg" disabled={isSubmitting || !allReady || !selectedDate} className="shrink-0 gap-1.5 w-full sm:w-auto">
               {isSubmitting ? 'Booking...' : <>Book for {members.length} <ArrowRight className="w-4 h-4" /></>}
             </Button>
           </CardContent>

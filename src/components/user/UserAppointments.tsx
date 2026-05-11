@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, memo, useCallback } from 'react';
 import { CalendarDays, Clock, Users, RotateCcw, X, Search, Info, Stethoscope, CalendarCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,71 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn, formatTime } from '@/lib/utils';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+
+interface ToolbarProps {
+  searchQuery: string;
+  onSearchChange: (v: string) => void;
+  statusFilter: string;
+  onFilterChange: (v: string) => void;
+  statusCounts: Record<string, number>;
+}
+
+const FILTER_OPTIONS = [
+  { v: 'all', label: 'All' },
+  { v: 'Pending', label: 'Pending' },
+  { v: 'Confirmed', label: 'Confirmed' },
+  { v: 'Completed', label: 'Completed' },
+  { v: 'Cancelled', label: 'Cancelled' },
+  { v: 'No Show', label: 'No Show' },
+] as const;
+
+// Extracted + memoized toolbar so typing in the search box does not
+// re-render the entire appointment list on every keystroke.
+const AppointmentsToolbar = memo(function AppointmentsToolbar({
+  searchQuery, onSearchChange, statusFilter, onFilterChange, statusCounts,
+}: ToolbarProps) {
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by service, date, or status..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="pl-10 h-10"
+        />
+      </div>
+      {/* On mobile we WRAP the chips so nothing overflows the viewport.
+          On >= sm we keep the single-line scrollable strip. */}
+      <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap sm:overflow-x-auto sm:pb-1 -mx-1 px-1 no-scrollbar">
+        {FILTER_OPTIONS.map(opt => {
+          const active = statusFilter === opt.v;
+          const count = statusCounts[opt.v] ?? 0;
+          return (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => onFilterChange(opt.v)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 shrink-0',
+                active
+                  ? 'bg-secondary text-secondary-foreground shadow-sm'
+                  : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              {opt.label}
+              <span className={cn(
+                'inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+                active ? 'bg-secondary-foreground/20 text-secondary-foreground' : 'bg-card text-muted-foreground',
+              )}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 interface UserAppointmentsProps {
   highlightAppointmentId?: number | null;
@@ -37,6 +102,10 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  // Debounce so we don't recompute the filtered/sorted appointment list on
+  // every keystroke. 150ms feels instant but keeps typing buttery smooth
+  // even on large appointment histories.
+  const debouncedSearch = useDebouncedValue(searchQuery, 150);
   const [successModal, setSuccessModal] = useState<{ open: boolean; title: string; description: string }>({ open: false, title: '', description: '' });
   const [highlightingId, setHighlightingId] = useState<number | null>(null);
   // Per-appointment list of group members. The parent appointment row only
@@ -91,8 +160,8 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
     return appointments
       .filter(a => {
         const matchesStatus = statusFilter === 'all' || a.status === statusFilter;
-        if (!searchQuery) return matchesStatus;
-        const q = searchQuery.toLowerCase();
+        if (!debouncedSearch) return matchesStatus;
+        const q = debouncedSearch.toLowerCase();
         const service = ((a as unknown as { service?: string }).service || '').toLowerCase();
         const dateFormatted = new Date(a.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).toLowerCase();
         const bookingType = a.is_group_booking ? 'companion group' : 'individual dental';
@@ -106,7 +175,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
         if (statusDiff !== 0) return statusDiff;
         return b.appointment_date.localeCompare(a.appointment_date);
       });
-  }, [appointments, statusFilter, searchQuery]);
+  }, [appointments, statusFilter, debouncedSearch]);
 
   // Counts for the quick-filter chip strip
   const statusCounts = useMemo(() => {
@@ -194,8 +263,12 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
 
   const rescheduleApt = rescheduleId ? appointments.find(a => a.id === rescheduleId) : null;
 
+  // Stable handlers so the memoized toolbar doesn't re-render on each list update
+  const handleSearchChange = useCallback((v: string) => setSearchQuery(v), []);
+  const handleFilterChange = useCallback((v: string) => setStatusFilter(v), []);
+
   return (
-    <div className="space-y-5 w-full max-w-5xl mx-auto">
+    <div className="space-y-5 w-full max-w-5xl mx-auto min-w-0">
       <PageHeader
         icon={CalendarCheck}
         title="My Appointments"
@@ -207,56 +280,20 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-secondary/15 text-secondary shrink-0">
           <Info className="w-4 h-4" />
         </span>
-        <div className="text-xs text-foreground/80 space-y-0.5">
+        <div className="text-xs text-foreground/80 space-y-0.5 min-w-0">
           <p>Cancellations & rescheduling must be at least <strong className="text-foreground">1 day (24 hours)</strong> before your appointment.</p>
           <p>Rescheduling is allowed <strong className="text-foreground">1 time only</strong> per appointment.</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="space-y-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by service, date, or status..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 h-10"
-          />
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
-          {([
-            { v: 'all', label: 'All' },
-            { v: 'Pending', label: 'Pending' },
-            { v: 'Confirmed', label: 'Confirmed' },
-            { v: 'Completed', label: 'Completed' },
-            { v: 'Cancelled', label: 'Cancelled' },
-            { v: 'No Show', label: 'No Show' },
-          ]).map(opt => {
-            const active = statusFilter === opt.v;
-            const count = statusCounts[opt.v] ?? 0;
-            return (
-              <button
-                key={opt.v}
-                type="button"
-                onClick={() => setStatusFilter(opt.v)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all duration-150 shrink-0',
-                  active
-                    ? 'bg-secondary text-secondary-foreground shadow-sm'
-                    : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                {opt.label}
-                <span className={cn(
-                  'inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1.5 text-[10px] font-bold tabular-nums',
-                  active ? 'bg-secondary-foreground/20 text-secondary-foreground' : 'bg-card text-muted-foreground',
-                )}>{count}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Filters — extracted + memoized to keep typing instant. */}
+      <AppointmentsToolbar
+        searchQuery={searchQuery}
+        onSearchChange={handleSearchChange}
+        statusFilter={statusFilter}
+        onFilterChange={handleFilterChange}
+        statusCounts={statusCounts}
+      />
 
       {/* Appointments List */}
       {filteredAppointments.length === 0 ? (
@@ -273,30 +310,30 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
               key={apt.id}
               id={`apt-${apt.id}`}
               className={cn(
-                'border-border/50 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-secondary/30',
+                'border-border/50 overflow-hidden transition-all duration-300 hover:shadow-md hover:border-secondary/30 card-lift',
                 highlightingId === apt.id && 'ring-2 ring-secondary ring-offset-2 shadow-md'
               )}
             >
               <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
                   {/* Left - Info */}
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
                     <div className="w-11 h-11 rounded-xl bg-secondary/10 flex items-center justify-center shrink-0">
                       {apt.is_group_booking ? <Users className="w-5 h-5 text-secondary" /> : <CalendarDays className="w-5 h-5 text-secondary" />}
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-foreground">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm text-foreground break-words">
                         {apt.is_group_booking ? 'Companion Booking' : 'Dental Appointment'}
                       </p>
                       {(apt.status === 'Confirmed' || apt.status === 'Completed') && (apt as unknown as { service?: string }).service && (
-                        <p className="text-xs text-secondary font-medium flex items-center gap-1 mt-0.5">
-                          <Stethoscope className="w-3 h-3" />
-                          Service: {(apt as unknown as { service?: string }).service}
+                        <p className="text-xs text-secondary font-medium flex items-center gap-1 mt-0.5 break-words">
+                          <Stethoscope className="w-3 h-3 shrink-0" />
+                          <span className="break-words">Service: {(apt as unknown as { service?: string }).service}</span>
                         </p>
                       )}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                         <span className="flex items-center gap-1">
-                          <CalendarDays className="w-3 h-3" />
+                          <CalendarDays className="w-3 h-3 shrink-0" />
                           {new Date(apt.appointment_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                         {(() => {
@@ -306,7 +343,7 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                             const times = Array.from(new Set(memberMap[apt.id].map(m => m.appointment_time).filter(Boolean))).sort();
                             return (
                               <span className="flex items-center gap-1 flex-wrap">
-                                <Clock className="w-3 h-3" />
+                                <Clock className="w-3 h-3 shrink-0" />
                                 {times.map((t, i) => (
                                   <span key={t} className="tabular-nums">
                                     {formatTime(t)}{i < times.length - 1 && <span className="text-muted-foreground/60">,</span>}
@@ -317,14 +354,14 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                           }
                           return (
                             <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
+                              <Clock className="w-3 h-3 shrink-0" />
                               {formatTime(apt.appointment_time)}
                             </span>
                           );
                         })()}
                       </div>
                       {apt.notes && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">Notes: {apt.notes}</p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 break-words">Notes: {apt.notes}</p>
                       )}
                       {apt.reschedule_count && apt.reschedule_count > 0 && (
                         <p className="text-[11px] text-amber-600 mt-0.5">Rescheduled {apt.reschedule_count} time(s)</p>
@@ -332,31 +369,35 @@ export function UserAppointments({ highlightAppointmentId, highlightKey }: UserA
                     </div>
                   </div>
 
-                  {/* Right - Status & Actions */}
-                  <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+                  {/* Right - Status & Actions
+                      Mobile: full-width row of buttons under the badge.
+                      Desktop: stacked column on the right. */}
+                  <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-start sm:shrink-0 w-full sm:w-auto">
                     <Badge variant={statusVariant(apt.status)}>{apt.status}</Badge>
-                    <div className="flex items-center gap-1.5">
-                      {canReschedule(apt) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
-                          onClick={() => setRescheduleId(apt.id)}
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" /> Reschedule
-                        </Button>
-                      )}
-                      {canModify(apt) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                          onClick={() => setCancelId(apt.id)}
-                        >
-                          <X className="w-3.5 h-3.5" /> Cancel
-                        </Button>
-                      )}
-                    </div>
+                    {(canReschedule(apt) || canModify(apt)) && (
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {canReschedule(apt) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1.5 text-blue-600 border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+                            onClick={() => setRescheduleId(apt.id)}
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Reschedule
+                          </Button>
+                        )}
+                        {canModify(apt) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                            onClick={() => setCancelId(apt.id)}
+                          >
+                            <X className="w-3.5 h-3.5" /> Cancel
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>

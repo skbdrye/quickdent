@@ -191,6 +191,18 @@ body,
   height: 100%;
 }
 
+/* Defensive: never let any rogue child push the page wider than the viewport.
+   This kills the horizontal-scroll regression on the My Appointments and
+   Book for Others screens on mobile. Internal scroll containers that DO
+   need to scroll horizontally (e.g. `.no-scrollbar` chip strips) opt in
+   explicitly with overflow-x-auto on themselves. */
+html, body { overflow-x: hidden; }
+
+/* Hide native scrollbar on chip strips that opt into horizontal scrolling
+   only at >= sm breakpoint. Visual cleanliness without losing scrollability. */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
